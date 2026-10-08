@@ -1,0 +1,45 @@
+# XcodeGen spec. Generate the Xcode project with:  xcodegen generate
+name: PengPengHeartbeat
+options:
+  bundleIdPrefix: com.example
+  deploymentTarget:
+    iOS: "16.0"
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    IPHONEOS_DEPLOYMENT_TARGET: "16.0"
+targets:
+  PengPengHeartbeat:
+    type: application
+    platform: iOS
+    sources:
+      - App
+      - Core
+      - NFC
+    info:
+      path: App/Info.plist
+      properties:
+        CFBundleDisplayName: 碰碰心跳
+        CFBundleShortVersionString: "0.1.0"
+        CFBundleVersion: "1"
+        NFCReaderUsageDescription: 用于与电子价签通信（发送心跳、读取心跳信道）
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+    entitlements:
+      path: App/PengPengHeartbeat.entitlements
+      properties:
+        com.apple.developer.nfc.readersession.formats:
+          - TAG
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.example.pengpengheartbeat
+        GENERATE_INFOPLIST_FILE: NO
+        CODE_SIGN_ENTITLEMENTS: App/PengPengHeartbeat.entitlements
+schemes:
+  PengPengHeartbeat:
+    build:
+      targets:
+        PengPengHeartbeat: all
+    run:
+      config: Debug

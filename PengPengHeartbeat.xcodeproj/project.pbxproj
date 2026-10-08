@@ -1,0 +1,332 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		094262401404B2328A15BF49 /* HeartbeatSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0C5FA5894C57D8008512D6F3 /* HeartbeatSession.swift */; };
+		47F25D84CC1704BFAAD619F7 /* HeartbeatModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB5512E5C9FA61435DD1EB79 /* HeartbeatModel.swift */; };
+		4A0E81447221A7999D44F964 /* HeartbeatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 036866EF62F1B3A5DBF22CF3 /* HeartbeatView.swift */; };
+		4F1AF6F22F337CB13EA6115D /* AESECB.swift in Sources */ = {isa = PBXBuildFile; fileRef = 565B6412C4CA892F1C06A233 /* AESECB.swift */; };
+		C8BFC8165DC036CFC0143C36 /* CRC16.swift in Sources */ = {isa = PBXBuildFile; fileRef = D53D95A45CAE658A55039850 /* CRC16.swift */; };
+		CC11750C0047A5ABBCDDB871 /* CoreNFCTagSessionRunner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67CE3D9F2D31F225EC721B26 /* CoreNFCTagSessionRunner.swift */; };
+		CE0D72488D9DAAF3841D658E /* ESLFrame.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA2B5A4CB5786750A12E9D19 /* ESLFrame.swift */; };
+		EB0519E4F5D5018AAE93B25F /* PengPengHeartbeatApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 461CD2048A8BBEC32C6FFF33 /* PengPengHeartbeatApp.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		036866EF62F1B3A5DBF22CF3 /* HeartbeatView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HeartbeatView.swift; sourceTree = "<group>"; };
+		0C5FA5894C57D8008512D6F3 /* HeartbeatSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HeartbeatSession.swift; sourceTree = "<group>"; };
+		1C5EAD5441267D7B6F934C21 /* PengPengHeartbeat.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = PengPengHeartbeat.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		461CD2048A8BBEC32C6FFF33 /* PengPengHeartbeatApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PengPengHeartbeatApp.swift; sourceTree = "<group>"; };
+		565B6412C4CA892F1C06A233 /* AESECB.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AESECB.swift; sourceTree = "<group>"; };
+		67CE3D9F2D31F225EC721B26 /* CoreNFCTagSessionRunner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoreNFCTagSessionRunner.swift; sourceTree = "<group>"; };
+		76F3C0E0C31FC9A57C59D6C1 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		966E2D0D46FA388BABBBF93D /* PengPengHeartbeat.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = PengPengHeartbeat.entitlements; sourceTree = "<group>"; };
+		D53D95A45CAE658A55039850 /* CRC16.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CRC16.swift; sourceTree = "<group>"; };
+		DA2B5A4CB5786750A12E9D19 /* ESLFrame.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ESLFrame.swift; sourceTree = "<group>"; };
+		DB5512E5C9FA61435DD1EB79 /* HeartbeatModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HeartbeatModel.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXGroup section */
+		2486C0C03B9325EF46374E3A /* Core */ = {
+			isa = PBXGroup;
+			children = (
+				565B6412C4CA892F1C06A233 /* AESECB.swift */,
+				D53D95A45CAE658A55039850 /* CRC16.swift */,
+				DA2B5A4CB5786750A12E9D19 /* ESLFrame.swift */,
+				0C5FA5894C57D8008512D6F3 /* HeartbeatSession.swift */,
+			);
+			path = Core;
+			sourceTree = "<group>";
+		};
+		4770D6FC02C4DB07441949A8 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				1C5EAD5441267D7B6F934C21 /* PengPengHeartbeat.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		62148805213FBE168DC26D02 /* App */ = {
+			isa = PBXGroup;
+			children = (
+				DB5512E5C9FA61435DD1EB79 /* HeartbeatModel.swift */,
+				036866EF62F1B3A5DBF22CF3 /* HeartbeatView.swift */,
+				76F3C0E0C31FC9A57C59D6C1 /* Info.plist */,
+				966E2D0D46FA388BABBBF93D /* PengPengHeartbeat.entitlements */,
+				461CD2048A8BBEC32C6FFF33 /* PengPengHeartbeatApp.swift */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		87A40C2A2FFA47E6B22F3B7C /* NFC */ = {
+			isa = PBXGroup;
+			children = (
+				67CE3D9F2D31F225EC721B26 /* CoreNFCTagSessionRunner.swift */,
+			);
+			path = NFC;
+			sourceTree = "<group>";
+		};
+		A56F1077945B06605BF5A84C = {
+			isa = PBXGroup;
+			children = (
+				62148805213FBE168DC26D02 /* App */,
+				2486C0C03B9325EF46374E3A /* Core */,
+				87A40C2A2FFA47E6B22F3B7C /* NFC */,
+				4770D6FC02C4DB07441949A8 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		071B5FFE8B66423315F914DE /* PengPengHeartbeat */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 6FA4F1ACB5092CE3DAE4B0D7 /* Build configuration list for PBXNativeTarget "PengPengHeartbeat" */;
+			buildPhases = (
+				6F19727B19221FC0B212118E /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = PengPengHeartbeat;
+			packageProductDependencies = (
+			);
+			productName = PengPengHeartbeat;
+			productReference = 1C5EAD5441267D7B6F934C21 /* PengPengHeartbeat.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		CBD05BE55E428BE5DFE132A3 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+				};
+			};
+			buildConfigurationList = F4488B9F4C77FEB628EE88CE /* Build configuration list for PBXProject "PengPengHeartbeat" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = A56F1077945B06605BF5A84C;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 4770D6FC02C4DB07441949A8 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				071B5FFE8B66423315F914DE /* PengPengHeartbeat */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXSourcesBuildPhase section */
+		6F19727B19221FC0B212118E /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				4F1AF6F22F337CB13EA6115D /* AESECB.swift in Sources */,
+				C8BFC8165DC036CFC0143C36 /* CRC16.swift in Sources */,
+				CC11750C0047A5ABBCDDB871 /* CoreNFCTagSessionRunner.swift in Sources */,
+				CE0D72488D9DAAF3841D658E /* ESLFrame.swift in Sources */,
+				47F25D84CC1704BFAAD619F7 /* HeartbeatModel.swift in Sources */,
+				094262401404B2328A15BF49 /* HeartbeatSession.swift in Sources */,
+				4A0E81447221A7999D44F964 /* HeartbeatView.swift in Sources */,
+				EB0519E4F5D5018AAE93B25F /* PengPengHeartbeatApp.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		0ED5AC90B7759533FE1BE5D7 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		9AF3B404594BD5114F391FCF /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = App/PengPengHeartbeat.entitlements;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = App/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.example.pengpengheartbeat;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		BA69AEB9D10532365DBB989E /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		CC0531A4A58B8ACF957E6571 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = App/PengPengHeartbeat.entitlements;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = App/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.example.pengpengheartbeat;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		6FA4F1ACB5092CE3DAE4B0D7 /* Build configuration list for PBXNativeTarget "PengPengHeartbeat" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				CC0531A4A58B8ACF957E6571 /* Debug */,
+				9AF3B404594BD5114F391FCF /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		F4488B9F4C77FEB628EE88CE /* Build configuration list for PBXProject "PengPengHeartbeat" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				0ED5AC90B7759533FE1BE5D7 /* Debug */,
+				BA69AEB9D10532365DBB989E /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = CBD05BE55E428BE5DFE132A3 /* Project object */;
+}

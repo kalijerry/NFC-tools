@@ -1,0 +1,48 @@
+name: Build IPA
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  core-tests:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and run Core tests
+        run: |
+          swiftc -O Core/*.swift Tests/main.swift -o core_tests
+          ./core_tests
+
+  build-ipa:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Xcode version
+        run: xcodebuild -version
+      - name: Build (Release, device SDK, unsigned)
+        run: |
+          xcodebuild \
+            -project PengPengHeartbeat.xcodeproj \
+            -scheme PengPengHeartbeat \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            build
+      - name: Package unsigned IPA
+        run: |
+          APP=$(find build/Build/Products/Release-iphoneos -maxdepth 1 -name '*.app' | head -1)
+          test -n "$APP"
+          mkdir -p Payload
+          cp -R "$APP" Payload/
+          zip -qry PengPengHeartbeat-unsigned.ipa Payload
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PengPengHeartbeat-unsigned-ipa
+          path: PengPengHeartbeat-unsigned.ipa
