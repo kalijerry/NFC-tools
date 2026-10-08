@@ -5,3 +5,5 @@ Payload/
 *.ipa
 *.xcuserstate
 xcuserdata/
+__pycache__/
+*.pyc

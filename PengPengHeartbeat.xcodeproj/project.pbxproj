@@ -14,6 +14,7 @@
 		C8BFC8165DC036CFC0143C36 /* CRC16.swift in Sources */ = {isa = PBXBuildFile; fileRef = D53D95A45CAE658A55039850 /* CRC16.swift */; };
 		CC11750C0047A5ABBCDDB871 /* CoreNFCTagSessionRunner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67CE3D9F2D31F225EC721B26 /* CoreNFCTagSessionRunner.swift */; };
 		CE0D72488D9DAAF3841D658E /* ESLFrame.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA2B5A4CB5786750A12E9D19 /* ESLFrame.swift */; };
+		DC178ACC818C4FE68E8F0471 /* TransportErrors.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA72592386DBF8D78DE4D19C /* TransportErrors.swift */; };
 		EB0519E4F5D5018AAE93B25F /* PengPengHeartbeatApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 461CD2048A8BBEC32C6FFF33 /* PengPengHeartbeatApp.swift */; };
 /* End PBXBuildFile section */
 
@@ -29,6 +30,7 @@
 		D53D95A45CAE658A55039850 /* CRC16.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CRC16.swift; sourceTree = "<group>"; };
 		DA2B5A4CB5786750A12E9D19 /* ESLFrame.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ESLFrame.swift; sourceTree = "<group>"; };
 		DB5512E5C9FA61435DD1EB79 /* HeartbeatModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HeartbeatModel.swift; sourceTree = "<group>"; };
+		EA72592386DBF8D78DE4D19C /* TransportErrors.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransportErrors.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
@@ -39,6 +41,7 @@
 				D53D95A45CAE658A55039850 /* CRC16.swift */,
 				DA2B5A4CB5786750A12E9D19 /* ESLFrame.swift */,
 				0C5FA5894C57D8008512D6F3 /* HeartbeatSession.swift */,
+				EA72592386DBF8D78DE4D19C /* TransportErrors.swift */,
 			);
 			path = Core;
 			sourceTree = "<group>";
@@ -144,6 +147,7 @@
 				094262401404B2328A15BF49 /* HeartbeatSession.swift in Sources */,
 				4A0E81447221A7999D44F964 /* HeartbeatView.swift in Sources */,
 				EB0519E4F5D5018AAE93B25F /* PengPengHeartbeatApp.swift in Sources */,
+				DC178ACC818C4FE68E8F0471 /* TransportErrors.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

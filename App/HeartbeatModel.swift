@@ -18,6 +18,8 @@ final class HeartbeatModel: ObservableObject {
     @Published var keyBase64: String
     @Published private(set) var log: [String] = []
     @Published private(set) var isBusy = false
+    @Published var ledColor: ESLFrame.LEDColor = .red
+    @Published var ledCount: UInt16 = 10
 
     private let runner: ESLTagSessionRunner
     private let defaults: UserDefaults
@@ -66,6 +68,30 @@ final class HeartbeatModel: ObservableObject {
             let raw = try await session.readHeartbeatChannel()
             // The Android app shows the byte as a signed Java value, so do the same.
             return "信道 \(Int8(bitPattern: raw))"
+        }
+    }
+
+    func flashLight(via: LightTransport) async {
+        let color = ledColor.rawValue
+        let count = ledCount
+        let label = via == .apdu ? "闪灯 (APDU 实验)" : "闪灯 (原始帧)"
+        await perform(title: label) { session in
+            Self.describe(try await session.flashLight(color: color, count: count, via: via))
+        }
+    }
+
+    func shutLight(via: LightTransport) async {
+        let label = via == .apdu ? "关灯 (APDU 实验)" : "关灯 (原始帧)"
+        await perform(title: label) { session in
+            Self.describe(try await session.shutLight(via: via))
+        }
+    }
+
+    private static func describe(_ outcome: HeartbeatOutcome) -> String {
+        switch outcome {
+        case .sent: return "发送成功!"
+        case .noSuchPage: return "无此页!"
+        case .transferFailed: return "传输失败!"
         }
     }
 

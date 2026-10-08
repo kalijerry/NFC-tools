@@ -2,27 +2,6 @@
 import CoreNFC
 import Foundation
 
-/// Errors specific to the CoreNFC transport.
-enum CoreNFCTransportError: LocalizedError {
-    case unsupportedTagType
-    case ndefNotWritable
-    /// CoreNFC can only send ISO 7816-4 APDUs (`NFCISO7816APDU`). The ESL frames are raw
-    /// ISO-DEP payloads whose 5th byte is a command code, not an Lc length, so they cannot
-    /// be represented. See README "iOS 限制".
-    case frameNotRepresentableAsAPDU(length: Int)
-
-    var errorDescription: String? {
-        switch self {
-        case .unsupportedTagType:
-            return "这不是 ISO 14443-4 (IsoDep) 价签"
-        case .ndefNotWritable:
-            return "价签不可写 NDEF（数据连接超时）"
-        case .frameNotRepresentableAsAPDU(let length):
-            return "iOS CoreNFC 只能发送 ISO 7816-4 APDU，无法发送 \(length) 字节的原始 ESL 帧"
-        }
-    }
-}
-
 /// Runs one CoreNFC tag session and hands the tag to `ESLTagTransport` code.
 final class CoreNFCTagSessionRunner: NSObject, ESLTagSessionRunner, NFCTagReaderSessionDelegate {
     private var session: NFCTagReaderSession?
@@ -37,7 +16,7 @@ final class CoreNFCTagSessionRunner: NSObject, ESLTagSessionRunner, NFCTagReader
     private func waitForTag() async throws -> NFCISO7816Tag {
         try await withCheckedThrowingContinuation { continuation in
             guard let session = NFCTagReaderSession(pollingOption: .iso14443, delegate: self, queue: nil) else {
-                continuation.resume(throwing: CoreNFCTransportError.unsupportedTagType)
+                continuation.resume(throwing: ESLTransportError.unsupportedTagType)
                 return
             }
             pendingTag = continuation
@@ -64,8 +43,8 @@ final class CoreNFCTagSessionRunner: NSObject, ESLTagSessionRunner, NFCTagReader
     func tagReaderSession(_ session: NFCTagReaderSession, didDetect tags: [NFCTag]) {
         guard let first = tags.first else { return }
         guard case let .iso7816(tag) = first else {
-            session.invalidate(errorMessage: CoreNFCTransportError.unsupportedTagType.localizedDescription)
-            finish(.failure(CoreNFCTransportError.unsupportedTagType))
+            session.invalidate(errorMessage: ESLTransportError.unsupportedTagType.localizedDescription)
+            finish(.failure(ESLTransportError.unsupportedTagType))
             return
         }
         session.connect(to: first) { [weak self] error in
@@ -100,7 +79,7 @@ final class CoreNFCTagTransport: ESLTagTransport {
         guard status == .readWrite,
               let payload = NFCNDEFPayload.wellKnownTypeTextPayload(string: "汉朔科技E31", locale: Locale(identifier: "zh"))
         else {
-            throw CoreNFCTransportError.ndefNotWritable
+            throw ESLTransportError.ndefNotWritable
         }
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             tag.writeNDEF(NFCNDEFMessage(records: [payload])) { error in
@@ -113,14 +92,23 @@ final class CoreNFCTagTransport: ESLTagTransport {
         }
     }
 
+    /// Raw ESL frames are not ISO 7816-4 APDUs, and CoreNFC has no other way to send raw ISO-DEP bytes.
     func transceive(_ frame: [UInt8]) async throws -> [UInt8] {
-        // Returns nil for anything that is not a well-formed ISO 7816-4 APDU, which is the case
-        // for every ESL frame (the Android app uses raw IsoDep.transceive).
-        guard let apdu = NFCISO7816APDU(data: Data(frame)) else {
-            throw CoreNFCTransportError.frameNotRepresentableAsAPDU(length: frame.count)
-        }
+        throw ESLTransportError.frameNotRepresentableAsAPDU(length: frame.count)
+    }
+
+    /// ISO 7816-4 APDU. CoreNFC serialises CLA INS P1 P2 Lc data itself.
+    func transceiveAPDU(_ apdu: ESLFrame.APDU) async throws -> [UInt8] {
+        let command = NFCISO7816APDU(
+            instructionClass: apdu.cla,
+            instructionCode: apdu.ins,
+            p1Parameter: apdu.p1,
+            p2Parameter: apdu.p2,
+            data: Data(apdu.data),
+            expectedResponseLength: -1
+        )
         return try await withCheckedThrowingContinuation { continuation in
-            tag.sendCommand(apdu: apdu) { data, sw1, sw2, error in
+            tag.sendCommand(apdu: command) { data, sw1, sw2, error in
                 if let error {
                     continuation.resume(throwing: error)
                 } else {

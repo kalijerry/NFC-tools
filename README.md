@@ -35,6 +35,18 @@ ESL 帧不是 APDU 格式：第 5 个字节是命令码（0x0A/0x0C 等），而
 
 因此，**在公开 CoreNFC API 下，iPhone 还无法真正与价签完成心跳**。绑定、亮灯、读取等走同一链路的功能也受影响。能否绕过取决于价签固件是否接受 APDU 形式的变体，需要真机验证。备选方案包括外部支持原始 ISO-DEP 的 NFC 读写器（经蓝牙连接 iPhone）。
 
+## 闪灯与 ISO 7816 APDU
+
+- Android 的亮灯（`LightActy` → `XModem.light`）和关灯（`XModem.shutLight`）帧结构与心跳相同：
+  `00 C0 00 12 00 <17 字节明文中前 16 字节 AES 加密> <第 17 字节> CRC`，命令码为 0x00。
+- 因此 LED 帧也不是 APDU，和心跳一样不能用 CoreNFC 的原始发送方式发出。
+- 另一种思路是把同样的字节包装成 ISO 7816-4 APDU：`CLA=00 INS=C0 P1=00 P2=LEN Lc=数据长度 数据`。
+  CoreNFC 的 `NFCISO7816APDU` 可以发送任意 CLA/INS/P1/P2/数据，所以这种包装在 iOS 上是能发出去的。
+  Swift 的 `ESLFrame.asAPDU` 和 Python 的 `as_apdu` 都实现了它，并用同一组参考字节测试过。
+- **能不能被价签接受，无法离线判断**：价签固件是否识别这种包装，只能用真价签测试。
+  已离线测试的只有字节格式本身。见 [mac-bridge/README.md](mac-bridge/README.md) 的硬件测试步骤。
+- 关灯有两条 Android 路径：`LightActy` 的「灭灯」先握手再发送，`ShutLightActy` 直接发送、无握手无 NDEF 写入。两条都已在 Core 中实现。
+
 ## 验证情况
 
 已验证（macOS，`swiftc`，Swift 6.2）：

@@ -18,6 +18,19 @@ jobs:
           swiftc -O Core/*.swift Tests/main.swift -o core_tests
           ./core_tests
 
+  bridge-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install test dependencies
+        run: pip install cryptography
+      - name: Run offline protocol tests (no reader needed)
+        working-directory: mac-bridge
+        run: python -m unittest discover -s . -p 'test_*.py' -v
+
   build-ipa:
     runs-on: macos-latest
     steps:

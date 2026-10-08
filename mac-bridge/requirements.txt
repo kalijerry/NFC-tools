@@ -1,0 +1,3 @@
+# Protocol tests need only cryptography. The reader CLI also needs pyscard and an ACR122U-class reader.
+cryptography>=42
+pyscard>=2.0
