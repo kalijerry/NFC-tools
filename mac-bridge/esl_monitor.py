@@ -21,6 +21,7 @@ from esl_core import ProtocolError
 
 DEFAULT_KEY_B64 = "/////////////////////w=="
 MODES = ("channel", "heartbeat", "led", "led-apdu", "shutlight", "shutlight-raw")
+MONITOR_MODES = ("channel", "heartbeat")
 
 
 def load_key(arg_value: str | None) -> bytes:
@@ -35,7 +36,11 @@ def run_mode(tag, key: bytes, mode: str, color: str, count: int) -> dict:
     """Runs one session. Returns a flat dict so it can go to stdout or CSV."""
     if mode == "channel":
         raw = core.session_read_channel(tag, key)
-        return {"result": f"channel {raw}", "channel_raw": raw, "channel_android_signed": raw - 256 if raw > 127 else raw}
+        return {
+            "result": f"channel {raw}",
+            "channel_raw": raw,
+            "channel_android_signed": raw - 256 if raw > 127 else raw,
+        }
     if mode == "heartbeat":
         return {"result": core.session_heartbeat(tag, key)}
     if mode == "led":
@@ -50,7 +55,7 @@ def run_mode(tag, key: bytes, mode: str, color: str, count: int) -> dict:
     raise SystemExit(f"unknown mode {mode}")
 
 
-def _row(mode: str, tag, outcome: dict | None, error: str | None) -> dict:
+def make_row(mode: str, tag, outcome: dict | None, error: str | None) -> dict:
     eslid = getattr(tag, "last_eslid", None)
     row = {
         "time": datetime.datetime.now().isoformat(timespec="seconds"),
@@ -64,16 +69,37 @@ def _row(mode: str, tag, outcome: dict | None, error: str | None) -> dict:
     return row
 
 
+def run_one(tag, key: bytes, mode: str, color: str = "red", count: int = 10) -> dict:
+    """One tag, one session. Protocol and reader errors become an 'error' row instead of raising."""
+    try:
+        return make_row(mode, tag, run_mode(tag, key, mode, color, count), None)
+    except (ProtocolError, ReaderError) as exc:
+        return make_row(mode, tag, None, str(exc))
+
+
+def run_monitor(source, key: bytes, mode: str, on_row, max_tags: int = 0) -> list[dict]:
+    """Loop: wait for a tag, run one session, report, wait for it to leave, repeat.
+
+    `source` needs wait_for_tag() and wait_for_removal(). PcscTagSource is the real one.
+    Returns after max_tags tags (0 = never; stop with Ctrl-C from the caller).
+    """
+    rows = []
+    while True:
+        tag = source.wait_for_tag()
+        row = run_one(tag, key, mode)
+        rows.append(row)
+        on_row(row)
+        source.wait_for_removal()
+        if max_tags and len(rows) >= max_tags:
+            return rows
+
+
 def cmd_once(args) -> int:
     key = load_key(args.key_b64)
     source = PcscTagSource(find_reader(args.reader), write_ndef=not args.no_ndef)
     print("waiting for a tag (Ctrl-C to cancel)...", file=sys.stderr)
     tag = source.wait_for_tag()
-    try:
-        outcome = run_mode(tag, key, args.mode, args.color, args.count)
-        row = _row(args.mode, tag, outcome, None)
-    except (ProtocolError, ReaderError) as exc:
-        row = _row(args.mode, tag, None, str(exc))
+    row = run_one(tag, key, args.mode, args.color, args.count)
     for name, value in row.items():
         print(f"{name:>10}: {value}")
     return 0 if row["status"] == "ok" else 1
@@ -84,27 +110,22 @@ def cmd_monitor(args) -> int:
     source = PcscTagSource(find_reader(args.reader), write_ndef=not args.no_ndef)
     sink = open(args.csv, "a", newline="", encoding="utf-8") if args.csv else None
     writer = None
-    seen = 0
+
+    def on_row(row: dict) -> None:
+        nonlocal writer
+        print(row)
+        if sink is None:
+            return
+        if writer is None:
+            writer = csv.DictWriter(sink, fieldnames=sorted(row.keys()), extrasaction="ignore")
+            if sink.tell() == 0:
+                writer.writeheader()
+        writer.writerow(row)
+        sink.flush()
+
     print(f"monitoring mode={args.mode}. Place one tag at a time. Ctrl-C to stop.", file=sys.stderr)
     try:
-        while True:
-            tag = source.wait_for_tag()
-            try:
-                row = _row(args.mode, tag, run_mode(tag, key, args.mode, "red", 10), None)
-            except (ProtocolError, ReaderError) as exc:
-                row = _row(args.mode, tag, None, str(exc))
-            print(row)
-            if sink:
-                if writer is None:
-                    writer = csv.DictWriter(sink, fieldnames=sorted(row.keys()), extrasaction="ignore")
-                    if sink.tell() == 0:
-                        writer.writeheader()
-                writer.writerow(row)
-                sink.flush()
-            source.wait_for_removal()
-            seen += 1
-            if args.max_tags and seen >= args.max_tags:
-                break
+        run_monitor(source, key, args.mode, on_row, args.max_tags)
     except KeyboardInterrupt:
         print("stopped", file=sys.stderr)
     finally:
@@ -129,7 +150,7 @@ def build_parser() -> argparse.ArgumentParser:
     once.set_defaults(func=cmd_once)
 
     mon = sub.add_parser("monitor", parents=[common], help="loop: one tag at a time, log each result")
-    mon.add_argument("--mode", choices=("channel", "heartbeat"), required=True)
+    mon.add_argument("--mode", choices=MONITOR_MODES, required=True)
     mon.add_argument("--csv", help="append results to this CSV file")
     mon.add_argument("--max-tags", type=int, default=0, help="stop after N tags (0 = run until Ctrl-C)")
     mon.set_defaults(func=cmd_monitor)

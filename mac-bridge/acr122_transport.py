@@ -15,6 +15,15 @@ import time
 
 from esl_core import ProtocolError, t4t_ndef_write_apdus, vendor_ndef_message
 
+# pyscard is only needed for a real reader. Tests use a simulated reader and must import this module without it.
+_NO_CARD_ERRORS: tuple = ()
+try:
+    from smartcard.Exceptions import NoCardException as _PyscardNoCard
+
+    _NO_CARD_ERRORS = (_PyscardNoCard,)
+except ImportError:
+    pass
+
 
 class TagLost(ProtocolError):
     """The PN532 reported that the target is gone."""
@@ -22,6 +31,10 @@ class TagLost(ProtocolError):
 
 class ReaderError(ProtocolError):
     """The reader or the card returned an unexpected status word."""
+
+
+class CardAbsent(Exception):
+    """No tag is in the field of the reader."""
 
 
 class Acr122Tag:
@@ -79,25 +92,24 @@ class PcscTagSource:
 
     def _connect(self):
         connection = self._reader.createConnection()
-        connection.connect()
+        try:
+            connection.connect()
+        except _NO_CARD_ERRORS as exc:
+            raise CardAbsent() from exc
         return connection
 
     def wait_for_tag(self) -> Acr122Tag:
-        from smartcard.Exceptions import NoCardException
-
         while True:
             try:
                 return Acr122Tag(self._connect(), write_ndef=self._write_ndef)
-            except NoCardException:
+            except CardAbsent:
                 time.sleep(self._poll)
 
     def wait_for_removal(self) -> None:
-        from smartcard.Exceptions import NoCardException
-
         while True:
             try:
                 self._connect()
-            except NoCardException:
+            except CardAbsent:
                 return
             time.sleep(self._poll)
 

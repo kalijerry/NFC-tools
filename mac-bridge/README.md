@@ -9,8 +9,13 @@ InDataExchange, the same bytes Android's `IsoDep.transceive` sends.
 | Item | Status |
 |---|---|
 | Frame bytes (heartbeat, channel, LED, shut-off, challenge, CRC binding) | Tested offline, against Java-derived oracle vectors |
-| ISO 7816 APDU wrapping of the LED frame | Bytes tested offline. Tag response **not tested** (no reader or tag here) |
-| Reader I/O (pyscard, ACR122U) | **Not tested**: no reader was connected when this was written |
+| Reader framing (pseudo-APDU InDataExchange), Type 4 NDEF write, card presence, monitor loop | Tested offline against a **simulated** reader and card (`simulated_reader.py`) |
+| ISO 7816 APDU wrapping of the LED frame | Bytes tested offline. Whether a real tag answers it is **not tested** |
+| Real reader I/O (pyscard, ACR122U) and real tags | **Not tested**: no reader connected, no tag used |
+
+The simulated tag firmware is an assumption (`accept_apdu` chooses whether it answers APDU framing).
+Passing these tests shows the software layers agree with each other. It does not show that a real
+reader or tag behaves the same way.
 
 ## Offline tests (no hardware)
 
@@ -18,6 +23,8 @@ InDataExchange, the same bytes Android's `IsoDep.transceive` sends.
 python3 -m pip install -r requirements.txt   # or: pip install cryptography
 python3 -m unittest discover -s . -p 'test_*.py' -v
 ```
+
+33 tests: protocol vectors, session logic, and the simulated end-to-end path.
 
 ## Hardware test (needs an ACR122U-class reader and one spare tag)
 
