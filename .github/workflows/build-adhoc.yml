@@ -57,10 +57,23 @@ jobs:
           security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
           security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
           security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+          # Apple WWDR G3 intermediate: the Apple Distribution certificate chains to it, and
+          # without it in the keychain the identity does not validate. Pinned by SHA-256.
+          curl -fsSL -o "$RUNNER_TEMP/AppleWWDRCAG3.cer" https://www.apple.com/certificateauthority/AppleWWDRCAG3.cer
+          WWDR_FP=$(openssl x509 -inform DER -in "$RUNNER_TEMP/AppleWWDRCAG3.cer" -noout -fingerprint -sha256 | cut -d= -f2)
+          [ "$WWDR_FP" = "DC:F2:18:78:C7:7F:41:98:E4:B4:61:4F:03:D6:96:D8:9C:66:C6:60:08:D4:24:4E:1B:99:16:1A:AC:91:60:1F" ] \
+            || { echo "::error::Unexpected WWDR G3 fingerprint: $WWDR_FP"; exit 1; }
+          security import "$RUNNER_TEMP/AppleWWDRCAG3.cer" -k "$KEYCHAIN_PATH"
+
           security import "$RUNNER_TEMP/cert.p12" -P "$P12_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
           security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH" > /dev/null
           security list-keychain -d user -s "$KEYCHAIN_PATH" $(security list-keychains -d user | tr -d '"')
           rm -f "$RUNNER_TEMP/cert.p12"
+
+          security find-identity -v -p codesigning "$KEYCHAIN_PATH"
+          security find-identity -v -p codesigning "$KEYCHAIN_PATH" | grep -q '1 valid identities found' \
+            || { echo "::error::The distribution identity does not validate on this runner"; exit 1; }
 
           security cms -D -i "$RUNNER_TEMP/adhoc.mobileprovision" > "$RUNNER_TEMP/profile.plist"
           PROFILE_UUID=$(/usr/libexec/PlistBuddy -c 'Print :UUID' "$RUNNER_TEMP/profile.plist")
