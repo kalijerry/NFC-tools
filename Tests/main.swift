@@ -97,6 +97,15 @@ check(hex(ESLFrame.asAPDU(ledBoundForAPDU).serialized) == "00c000121400e5d043b26
       "APDU serialisation CLA INS P1 P2 Lc data == oracle")
 check(ESLFrame.asAPDU(ledBoundForAPDU, le: true).serialized == ESLFrame.asAPDU(ledBoundForAPDU).serialized + [0x00],
       "APDU with Le appends a single 00")
+check(hex(ESLFrame.t4tSelectFile(ESLFrame.ccFileID).serialized) == "00a4000c02e103"
+        && hex(ESLFrame.t4tReadBinary(offset: 0, length: 15).serialized) == "00b000000f"
+        && hex(ESLFrame.t4tReadBinary(offset: 0, length: 2).serialized) == "00b0000002",
+      "Type 4 CC select and READ BINARY APDUs (Le = requested length)")
+check(ESLFrame.ndefFileID(fromCC: bytes("000f20003b00340406e10400ff0000")) == [0xE1, 0x04],
+      "NDEF file ID parsed from a standard Capability Container")
+check(ESLFrame.ndefFileID(fromCC: bytes("000f20003b003404")) == nil
+        && ESLFrame.ndefFileID(fromCC: bytes("000f20003b00340405e10400ff0000")) == nil,
+      "CC parse rejects a short or malformed NDEF File Control TLV")
 do {
     _ = try ESLFrame.eslid(fromResponse: [0x6A, 0x81])
     check(false, "short response throws ParseError")
@@ -116,6 +125,7 @@ final class MockTag: ESLTagTransport {
     var challengeAnsweredCorrectly = false
     var heartbeatFrames = 0
     var acceptAPDU = false
+    var throwOnAPDU = false
     var ledPlainSeen: [UInt8]?
     var apduFrames: [ESLFrame.APDU] = []
 
@@ -128,6 +138,7 @@ final class MockTag: ESLTagTransport {
     /// and ends the reply with a status word, as an ISO 7816 card would.
     func transceiveAPDU(_ apdu: ESLFrame.APDU) async throws -> [UInt8] {
         apduFrames.append(apdu)
+        if throwOnAPDU { throw ESLTransportError.sessionBusy }
         guard acceptAPDU else { return [0x6A, 0x81] }
         let raw = [apdu.cla, apdu.ins, apdu.p1, apdu.p2] + apdu.data
         let response = try await transceive(raw)
@@ -137,7 +148,7 @@ final class MockTag: ESLTagTransport {
         return response + [0x90, 0x00]
     }
 
-    func writeVendorNDEF() async throws {
+    func writeVendorNDEF(trace: SessionTrace?) async throws {
         ndefWritten = true
     }
 
@@ -305,6 +316,35 @@ func runSessions() async {
     let rejecting = MockTag(key: key)
     _ = try? await HeartbeatSession(key: key, transport: rejecting, via: .apdu, trace: failingTrace).sendHeartbeat()
     check(failingTrace.lines == ["→ APDU 00c00001030530d0", "← 6a81"], "trace shows the status word the tag answered")
+    check(trace.lines[1] == "← 00c0001400" + hex(eslidContent) + "9000", "trace keeps the full un-normalised response")
+    check(acceptingTag.apduFrames.allSatisfy { $0.expectedResponseLength == -1 }, "APDU without Le: no Le byte on any frame")
+
+    let leTag = MockTag(key: key)
+    leTag.acceptAPDU = true
+    let leTrace = SessionTrace()
+    let leOutcome = try? await HeartbeatSession(key: key, transport: leTag, via: .apdu, apduLe: true, trace: leTrace).sendHeartbeat()
+    check(leOutcome == .sent && leTag.apduFrames.count == 4
+            && leTag.apduFrames.allSatisfy { $0.expectedResponseLength == 256 }
+            && leTrace.lines[0] == "→ APDU 00c00001030530d000",
+          "APDU+Le: every APDU of the session carries Le=00")
+
+    let throwingTag = MockTag(key: key)
+    throwingTag.acceptAPDU = true
+    throwingTag.throwOnAPDU = true
+    let throwingTrace = SessionTrace()
+    _ = try? await HeartbeatSession(key: key, transport: throwingTag, via: .apdu, trace: throwingTrace).sendHeartbeat()
+    check(throwingTrace.lines.count == 2 && throwingTrace.lines[1].hasPrefix("✕ "), "trace records a transport error with ✕")
+
+    let shortChallengeTag = MockTag(key: key)
+    shortChallengeTag.acceptAPDU = true
+    shortChallengeTag.challenge = [0x90, 0x00]
+    do {
+        _ = try await HeartbeatSession(key: key, transport: shortChallengeTag, via: .apdu).sendHeartbeat()
+        check(false, "bare 90 00 challenge throws badChallenge")
+    } catch {
+        check((error as? ESLFrame.ParseError) == .badChallenge([0x90, 0x00]) && error.localizedDescription.contains("期望 16"),
+              "bare 90 00 challenge throws badChallenge with the raw bytes")
+    }
 }
 
 await runSessions()

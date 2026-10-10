@@ -17,42 +17,52 @@ from acr122_transport import CardAbsent
 from esl_core import SW_KEY_ERROR, SW_NO_PAGE, SW_SUCCESS
 
 NDEF_AID = bytes.fromhex("D2760000850101")
+CC_FILE_ID = bytes.fromhex("E103")
 NDEF_FILE_ID = bytes.fromhex("E104")
 
 
 class SimulatedNdefCard:
-    """Type 4 tag: NDEF application, one NDEF file (NLEN in the first two bytes)."""
+    """Type 4 tag: NDEF application, Capability Container (E103) and one NDEF file (E104, NLEN first)."""
+
+    CC = bytes.fromhex("000F20003B00340406E10400FF0000")  # CCLEN 15, v2.0, MLe 59, MLc 52, NDEF file E104 r/w
 
     def __init__(self, size: int = 256):
         self.file = bytearray(size)
         self._app_selected = False
-        self._file_selected = False
+        self._selected = None  # b"\xE1\x03" (CC) or b"\xE1\x04" (NDEF)
+
+    def _selected_bytes(self):
+        if self._selected == CC_FILE_ID:
+            return bytearray(self.CC)
+        if self._selected == NDEF_FILE_ID:
+            return self.file
+        return None
 
     def apdu(self, apdu: bytes) -> bytes:
         ins = apdu[1]
         if ins == 0xA4 and apdu[2] == 0x04:  # SELECT by name
             aid = apdu[5 : 5 + apdu[4]]
             self._app_selected = aid == NDEF_AID
-            self._file_selected = False
+            self._selected = None
             return SW_SUCCESS if self._app_selected else bytes([0x6A, 0x82])
         if ins == 0xA4 and apdu[2] == 0x00:  # SELECT by file id
-            if self._app_selected and apdu[5:7] == NDEF_FILE_ID:
-                self._file_selected = True
+            file_id = apdu[5:7]
+            if self._app_selected and file_id in (CC_FILE_ID, NDEF_FILE_ID):
+                self._selected = file_id
                 return SW_SUCCESS
             return bytes([0x6A, 0x82])
-        if ins == 0xD6:  # UPDATE BINARY
-            if not self._file_selected:
-                return bytes([0x69, 0x85])
-            offset = (apdu[2] << 8) | apdu[3]
+        target = self._selected_bytes()
+        if ins in (0xD6, 0xB0) and target is None:
+            return bytes([0x69, 0x85])
+        offset = (apdu[2] << 8) | apdu[3]
+        if ins == 0xD6:  # UPDATE BINARY (the CC is read-only here)
+            if self._selected != NDEF_FILE_ID:
+                return bytes([0x69, 0x82])
             data = apdu[5 : 5 + apdu[4]]
             self.file[offset : offset + len(data)] = data
             return SW_SUCCESS
         if ins == 0xB0:  # READ BINARY
-            if not self._file_selected:
-                return bytes([0x69, 0x85])
-            offset = (apdu[2] << 8) | apdu[3]
-            length = apdu[4]
-            return bytes(self.file[offset : offset + length]) + SW_SUCCESS
+            return bytes(target[offset : offset + apdu[4]]) + SW_SUCCESS
         return bytes([0x6D, 0x00])
 
     def ndef_message(self) -> bytes:

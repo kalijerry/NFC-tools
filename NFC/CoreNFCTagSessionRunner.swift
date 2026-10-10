@@ -2,8 +2,8 @@
 import CoreNFC
 import Foundation
 
-/// The ISO 14443 tag kinds CoreNFC can hand over. Which one an ESL tag shows up as depends on the
-/// Info.plist AID list: ISO 7816 if it answers SELECT for a listed AID, otherwise possibly MIFARE.
+/// The ISO 14443 tag kinds CoreNFC can hand over. Both device tests so far reported the ESL tag
+/// as ISO 7816 regardless of the Info.plist AID list; the MIFARE case is kept for other tags.
 enum DetectedTag {
     case iso7816(NFCISO7816Tag)
     case miFare(NFCMiFareTag)
@@ -138,7 +138,7 @@ final class CoreNFCTagTransport: ESLTagTransport {
         let kind: String
         switch tag {
         case .iso7816(let iso):
-            kind = "ISO 7816 标签，AID \(iso.initialSelectedAID)，UID \(Self.hex(iso.identifier))，"
+            kind = "ISO 7816 标签，AID \(iso.initialSelectedAID.isEmpty ? "无" : iso.initialSelectedAID)，UID \(Self.hex(iso.identifier))，"
                 + "historical \(Self.hex(iso.historicalBytes))，appData \(Self.hex(iso.applicationData))"
         case .miFare(let mifare):
             kind = "MIFARE 标签（\(Self.familyName(mifare.mifareFamily))），UID \(Self.hex(mifare.identifier))，"
@@ -154,56 +154,101 @@ final class CoreNFCTagTransport: ESLTagTransport {
         }
     }
 
-    /// Android aborts the session when this write fails. Here a failure is recorded in the summary
-    /// and the session continues, so a device test still shows whether the ESL frames get through.
-    /// CoreNFC's own Type 4 NDEF stack failed on the first device test ("Stack Error"), so after
-    /// it fails the same Type 4 sequence Android's Ndef.writeNdefMessage performs is sent as plain
-    /// APDUs, with every status word recorded.
-    func writeVendorNDEF() async throws {
+    /// Android aborts the session when this write fails. Here a failure is recorded and the session
+    /// continues, so a device test still shows whether the ESL frames get through.
+    /// CoreNFC's own Type 4 NDEF stack failed on the first device test ("Stack Error"), so after it
+    /// fails the Type 4 procedure Android's Ndef stack performs is run as plain APDUs, with every
+    /// response traced in full and the write verified by reading NLEN back.
+    func writeVendorNDEF(trace: SessionTrace?) async throws {
+        let target = ndefTag
+        var stage = "queryNDEFStatus"
         do {
-            try await writeNDEFRecord()
+            let (status, capacity) = try await queryNDEF(target)
+            trace?.record("NDEF CoreNFC 状态 \(Self.statusName(status))，容量 \(capacity)")
+            guard status == .readWrite else { throw ESLTransportError.ndefNotWritable(status: Int(status.rawValue)) }
+            guard let payload = NFCNDEFPayload.wellKnownTypeTextPayload(string: "汉朔科技E31", locale: Locale(identifier: "zh")) else {
+                throw ESLTransportError.ndefPayloadUnavailable
+            }
+            stage = "writeNDEF"
+            try await writeNDEF(target, NFCNDEFMessage(records: [payload]))
             ndefNote = "NDEF 写入成功（CoreNFC）"
             return
         } catch {
-            ndefNote = "NDEF CoreNFC 写入失败（\(error.localizedDescription)）"
+            let nsError = error as NSError
+            let detail = "\(error.localizedDescription)，\(nsError.domain) \(nsError.code)"
+            trace?.record("✕ NDEF CoreNFC \(stage)：\(detail)")
+            ndefNote = "NDEF CoreNFC \(stage) 失败（\(detail)）"
         }
-
-        let names = ["选NDEF应用", "选NDEF文件", "清NLEN", "写记录", "写NLEN"]
-        var steps: [String] = []
-        var completed = false
-        for (index, apdu) in ESLFrame.t4tNDEFWriteAPDUs(message: ESLFrame.vendorNDEFMessage()).enumerated() {
-            do {
-                let response = try await transceiveAPDU(apdu)
-                let sw = Array(response.suffix(2))
-                steps.append("\(names[index]) \(ESLFrame.hex(sw))")
-                guard sw == [0x90, 0x00] else { break }
-                completed = index == names.count - 1
-            } catch {
-                steps.append("\(names[index]) 错误 \(error.localizedDescription)")
-                break
-            }
-        }
-        ndefNote += "；手动 T4T \(completed ? "成功" : "失败")：" + steps.joined(separator: ", ")
+        ndefNote += "；" + (await manualType4Write(trace: trace))
     }
 
-    private func writeNDEFRecord() async throws {
-        let target = ndefTag
-        let status: NFCNDEFStatus = try await withCheckedThrowingContinuation { continuation in
-            target.queryNDEFStatus { status, _, error in
+    /// Select the NDEF application, read the Capability Container for the NDEF file ID, write the
+    /// record, read NLEN back. Returns a one-line verdict; the trace has every byte.
+    private func manualType4Write(trace: SessionTrace?) async -> String {
+        func step(_ name: String, _ apdu: ESLFrame.APDU) async -> [UInt8]? {
+            trace?.record("→ T4T \(name) \(ESLFrame.hex(apdu.serialized))")
+            do {
+                let response = try await transceiveAPDU(apdu)
+                trace?.record("← \(ESLFrame.hex(response))")
+                return response
+            } catch {
+                trace?.record("✕ T4T \(name)：\(error.localizedDescription)")
+                return nil
+            }
+        }
+        func ok(_ response: [UInt8]?) -> Bool {
+            guard let response else { return false }
+            return Array(response.suffix(2)) == [0x90, 0x00]
+        }
+
+        guard ok(await step("选NDEF应用", ESLFrame.t4tSelectApplication())) else {
+            return "手动 T4T 失败：选 NDEF 应用未返回 9000"
+        }
+        var fileID = ESLFrame.defaultNDEFFileID
+        var ccNote = "CC 未读到，假定文件 E104"
+        if ok(await step("选CC", ESLFrame.t4tSelectFile(ESLFrame.ccFileID))),
+           let cc = await step("读CC", ESLFrame.t4tReadBinary(offset: 0, length: 15)), ok(cc) {
+            let body = Array(cc.dropLast(2))
+            if let id = ESLFrame.ndefFileID(fromCC: body) {
+                fileID = id
+                ccNote = "CC 指向文件 \(ESLFrame.hex(id))"
+            } else {
+                ccNote = "CC 无法解析（\(ESLFrame.hex(body))），假定文件 E104"
+            }
+        }
+        guard ok(await step("选NDEF文件", ESLFrame.t4tSelectFile(fileID))) else {
+            return "手动 T4T 失败：\(ccNote)；选 NDEF 文件未返回 9000"
+        }
+        _ = await step("读NLEN(写前)", ESLFrame.t4tReadBinary(offset: 0, length: 2))
+        let message = ESLFrame.vendorNDEFMessage()
+        guard ok(await step("清NLEN", ESLFrame.t4tUpdateBinary(offset: 0, data: [0x00, 0x00]))),
+              ok(await step("写记录", ESLFrame.t4tUpdateBinary(offset: 2, data: message))),
+              ok(await step("写NLEN", ESLFrame.t4tUpdateBinary(offset: 0, data: [0x00, UInt8(message.count)])))
+        else {
+            return "手动 T4T 失败：\(ccNote)；写入步骤未全部返回 9000"
+        }
+        let readBack = await step("读NLEN(写后)", ESLFrame.t4tReadBinary(offset: 0, length: 2))
+        if readBack == [0x00, UInt8(message.count), 0x90, 0x00] {
+            return "手动 T4T 成功（NLEN 读回 \(message.count)）；\(ccNote)"
+        }
+        return "手动 T4T 未证实：五步都回 9000，但 NLEN 读回为 \(readBack.map(ESLFrame.hex) ?? "无响应")；\(ccNote)"
+    }
+
+    private func queryNDEF(_ target: NFCNDEFTag) async throws -> (NFCNDEFStatus, Int) {
+        try await withCheckedThrowingContinuation { continuation in
+            target.queryNDEFStatus { status, capacity, error in
                 if let error {
                     continuation.resume(throwing: error)
                 } else {
-                    continuation.resume(returning: status)
+                    continuation.resume(returning: (status, capacity))
                 }
             }
         }
-        guard status == .readWrite,
-              let payload = NFCNDEFPayload.wellKnownTypeTextPayload(string: "汉朔科技E31", locale: Locale(identifier: "zh"))
-        else {
-            throw ESLTransportError.ndefNotWritable
-        }
+    }
+
+    private func writeNDEF(_ target: NFCNDEFTag, _ message: NFCNDEFMessage) async throws {
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-            target.writeNDEF(NFCNDEFMessage(records: [payload])) { error in
+            target.writeNDEF(message) { error in
                 if let error {
                     continuation.resume(throwing: error)
                 } else {
@@ -214,8 +259,7 @@ final class CoreNFCTagTransport: ESLTagTransport {
     }
 
     /// Raw ESL frames. On an ISO 7816 tag CoreNFC has no raw path, so this throws.
-    /// On a MIFARE tag, sendMiFareCommand passes the bytes without APDU framing. Whether the ESL
-    /// firmware answers that the way it answers Android's IsoDep.transceive is untested.
+    /// On a MIFARE tag, sendMiFareCommand passes the bytes without APDU framing.
     func transceive(_ frame: [UInt8]) async throws -> [UInt8] {
         switch tag {
         case .iso7816:
@@ -263,6 +307,15 @@ final class CoreNFCTagTransport: ESLTagTransport {
     private static func hex(_ data: Data?) -> String {
         guard let data, !data.isEmpty else { return "无" }
         return data.map { String(format: "%02X", $0) }.joined()
+    }
+
+    private static func statusName(_ status: NFCNDEFStatus) -> String {
+        switch status {
+        case .notSupported: return "notSupported"
+        case .readWrite: return "readWrite"
+        case .readOnly: return "readOnly"
+        @unknown default: return "status \(status.rawValue)"
+        }
     }
 
     private static func familyName(_ family: NFCMiFareFamily) -> String {

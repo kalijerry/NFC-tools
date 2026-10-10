@@ -33,7 +33,7 @@ struct HeartbeatView: View {
                 } header: {
                     Text("发送方式")
                 } footer: {
-                    Text("原始帧与 Android 相同，但 iOS 只能在价签被识别为 MIFARE 时发送。APDU 方式把每一帧（包括握手）包装成 ISO 7816 命令。日志会记录 iOS 识别到的标签类型、NDEF 写入结果，以及每一帧的发送和响应字节。")
+                    Text("两次真机测试中这块价签都被 iOS 识别为 ISO 7816 标签，原始帧在这种标签上无法发送，会直接报错。APDU 方式把每一帧（包括握手）包装成 ISO 7816 命令。日志记录标签类型、NDEF 写入的每一步，以及每一帧的发送和响应字节。")
                 }
 
                 Section("快速心跳") {
@@ -59,6 +59,35 @@ struct HeartbeatView: View {
                 .disabled(model.isBusy)
 
                 Section {
+                    if model.log.isEmpty {
+                        Text("还没有记录。贴近价签并点一个操作后，这里会显示检测结果和每一帧的字节。")
+                            .foregroundStyle(.secondary)
+                    }
+                    ForEach(Array(model.log.enumerated()), id: \.offset) { _, line in
+                        Text(line)
+                            .font(line.hasPrefix("    ") ? .system(.caption2, design: .monospaced) : .body)
+                            .textSelection(.enabled)
+                    }
+                } header: {
+                    HStack {
+                        Text("日志")
+                        Spacer()
+                        Button("复制全部") { model.copyLog() }
+                            .disabled(model.log.isEmpty)
+                        ShareLink(item: model.logText) {
+                            Text("分享")
+                        }
+                        .disabled(model.log.isEmpty)
+                        Button("清空") { model.clearLog() }
+                            .disabled(model.log.isEmpty)
+                    }
+                    .font(.footnote)
+                    .textCase(nil)
+                } footer: {
+                    Text("用「复制全部」或「分享」把整段日志发出来，不要逐行复制。")
+                }
+
+                Section {
                     ForEach(model.framePreview) { item in
                         VStack(alignment: .leading, spacing: 4) {
                             Text(item.name)
@@ -73,14 +102,6 @@ struct HeartbeatView: View {
                     Text("帧预览")
                 } footer: {
                     Text("原始帧的十六进制，与 Android 版 logcat 对照用。")
-                }
-
-                Section("日志") {
-                    ForEach(Array(model.log.enumerated()), id: \.offset) { _, line in
-                        Text(line)
-                            .font(line.hasPrefix("    ") ? .system(.caption2, design: .monospaced) : .body)
-                            .textSelection(.enabled)
-                    }
                 }
             }
             .navigationTitle("碰碰心跳")

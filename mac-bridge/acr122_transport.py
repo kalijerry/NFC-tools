@@ -13,7 +13,9 @@ reader) is taken from the PN532 and ACR122U documentation, not from a test run.
 
 import time
 
-from esl_core import ProtocolError, t4t_ndef_write_apdus, vendor_ndef_message
+from esl_core import (CC_FILE_ID, DEFAULT_NDEF_FILE_ID, ProtocolError, ndef_file_id_from_cc,
+                      t4t_read_binary, t4t_select_application, t4t_select_file, t4t_update_binary,
+                      vendor_ndef_message)
 
 # pyscard is only needed for a real reader. Tests use a simulated reader and must import this module without it.
 _NO_CARD_ERRORS: tuple = ()
@@ -55,10 +57,25 @@ class Acr122Tag:
         return self._apdu(bytes.fromhex("FFCA000000"))
 
     def write_vendor_ndef(self) -> None:
+        """Type 4 write as Android's Ndef stack does it: CC first for the file ID, NLEN read back after."""
         if not self._write_ndef:
             return
-        for apdu in t4t_ndef_write_apdus(vendor_ndef_message()):
-            self._apdu(apdu)
+        self._apdu(t4t_select_application())
+        file_id = DEFAULT_NDEF_FILE_ID
+        try:
+            self._apdu(t4t_select_file(CC_FILE_ID))
+            file_id = ndef_file_id_from_cc(self._apdu(t4t_read_binary(0, 15))) or file_id
+        except ReaderError:
+            pass  # no readable CC: fall back to the conventional E104
+        message = vendor_ndef_message()
+        nlen = bytes([len(message) >> 8, len(message) & 0xFF])
+        self._apdu(t4t_select_file(file_id))
+        self._apdu(t4t_update_binary(0, bytes(2)))
+        self._apdu(t4t_update_binary(2, message))
+        self._apdu(t4t_update_binary(0, nlen))
+        read_back = self._apdu(t4t_read_binary(0, 2))
+        if read_back != nlen:
+            raise ReaderError(f"NDEF NLEN read-back {read_back.hex()} != {nlen.hex()}")
 
     def _in_data_exchange(self, payload: bytes) -> bytes:
         pn532 = bytes([0xD4, 0x40, 0x01]) + payload

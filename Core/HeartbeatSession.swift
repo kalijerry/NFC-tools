@@ -5,8 +5,9 @@ protocol ESLTagTransport {
     /// device test tells us how iOS sees the ESL tag.
     var tagSummary: String { get }
 
-    /// Writes the NDEF text record "汉朔科技E31" (BaseNfcManagerActy.createTextRecord).
-    func writeVendorNDEF() async throws
+    /// Writes the NDEF text record "汉朔科技E31" (BaseNfcManagerActy.createTextRecord). Everything
+    /// sent and received on the way is recorded in `trace`.
+    func writeVendorNDEF(trace: SessionTrace?) async throws
 
     /// Sends exactly these bytes and returns the raw response (Android `IsoDep.transceive`).
     func transceive(_ frame: [UInt8]) async throws -> [UInt8]
@@ -20,8 +21,8 @@ protocol ESLTagTransport {
 enum FrameTransport: String, CaseIterable, Identifiable {
     /// Android's own framing (IsoDep.transceive). CoreNFC cannot send it to an ISO 7816 tag.
     case rawFrame
-    /// Experiment: each frame wrapped as an ISO 7816-4 APDU (see ESLFrame.asAPDU). Whether the tag
-    /// firmware accepts this is unknown until a device test.
+    /// Each frame wrapped as an ISO 7816-4 APDU (see ESLFrame.asAPDU). Whether the tag firmware
+    /// accepts this is what the device tests are finding out.
     case apdu
 
     var id: String { rawValue }
@@ -102,7 +103,7 @@ struct HeartbeatSession {
     /// On the APDU path CoreNFC appends SW1 SW2 to the response data. A trailing 90 00 after data is
     /// dropped so the parsers see the same bytes as on the raw path; a bare status word (for example
     /// 90 00 or 6A 82) is passed through unchanged. This normalisation is an assumption about how
-    /// the firmware would answer APDUs.
+    /// the firmware would answer APDUs; the trace keeps the un-normalised bytes.
     private func exchange(_ frame: [UInt8]) async throws -> [UInt8] {
         do {
             switch via {
@@ -128,10 +129,11 @@ struct HeartbeatSession {
     }
 
     private func authenticate() async throws -> [UInt8] {
-        try await transport.writeVendorNDEF()
+        try await transport.writeVendorNDEF(trace: trace)
         let eslid = try ESLFrame.eslid(fromResponse: try await exchange(ESLFrame.sendEslId()))
         let challenge = try await exchange(try ESLFrame.getRandom(key: key))
         if challenge == [0x6A, 0x82] { throw HeartbeatError.keyError }
+        guard challenge.count == 16 else { throw ESLFrame.ParseError.badChallenge(challenge) }
         let encrypted = try AESECB.encrypt(key: key, challenge)
         _ = try await exchange(ESLFrame.sendRandom(encryptedChallenge: encrypted))
         return eslid

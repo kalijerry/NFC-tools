@@ -21,6 +21,7 @@ enum ESLFrame {
         case shortResponse([UInt8])
         case shortContent(declared: Int, response: [UInt8])
         case channelBlockMissing([UInt8])
+        case badChallenge([UInt8])
 
         var errorDescription: String? {
             switch self {
@@ -30,6 +31,8 @@ enum ESLFrame {
                 return "价签 ID 内容不足（声明 \(declared) 字节）：\(ESLFrame.hex(response))"
             case .channelBlockMissing(let response):
                 return "信道响应过短（\(response.count) 字节）：\(ESLFrame.hex(response))"
+            case .badChallenge(let response):
+                return "挑战长度错误（期望 16 字节，收到 \(response.count) 字节）：\(ESLFrame.hex(response))"
             }
         }
     }
@@ -51,7 +54,8 @@ enum ESLFrame {
         let p1: UInt8
         let p2: UInt8
         let data: [UInt8]
-        /// CoreNFC's expectedResponseLength: -1 sends no Le (case 3), 256 sends Le=00 (case 4).
+        /// CoreNFC's expectedResponseLength: -1 sends no Le (case 1/3), 1...255 sends that Le,
+        /// 256 sends Le=00 (up to 256 bytes back).
         var expectedResponseLength: Int = -1
 
         /// The bytes CoreNFC puts on the air.
@@ -64,6 +68,8 @@ enum ESLFrame {
             }
             if expectedResponseLength == 256 {
                 out.append(0x00)
+            } else if (1...255).contains(expectedResponseLength) {
+                out.append(UInt8(expectedResponseLength))
             }
             return out
         }
@@ -118,6 +124,13 @@ enum ESLFrame {
                     expectedResponseLength: le ? 256 : -1)
     }
 
+    // MARK: NFC Forum Type 4 Tag (what Android's Ndef.writeNdefMessage does under the hood)
+
+    static let ndefApplicationAID: [UInt8] = [0xD2, 0x76, 0x00, 0x00, 0x85, 0x01, 0x01]
+    static let ccFileID: [UInt8] = [0xE1, 0x03]
+    /// Conventional NDEF file ID, used only when the Capability Container cannot be read.
+    static let defaultNDEFFileID: [UInt8] = [0xE1, 0x04]
+
     /// BaseNfcManagerActy.createTextRecord: one well-known Text record, language "zh", as a short
     /// NDEF record (MB, ME, SR set; TNF well-known; type "T").
     static func vendorNDEFMessage() -> [UInt8] {
@@ -127,24 +140,48 @@ enum ESLFrame {
         return [0xD1, 0x01, UInt8(payload.count), 0x54] + payload
     }
 
-    /// NFC Forum Type 4 write, the sequence Android's Ndef.writeNdefMessage performs: select the
-    /// NDEF application, select the NDEF file, clear NLEN, write the message, set NLEN.
-    static func t4tNDEFWriteAPDUs(message: [UInt8]) -> [APDU] {
+    static func t4tSelectApplication() -> APDU {
+        APDU(cla: 0x00, ins: 0xA4, p1: 0x04, p2: 0x00, data: ndefApplicationAID, expectedResponseLength: 256)
+    }
+
+    static func t4tSelectFile(_ fileID: [UInt8]) -> APDU {
+        APDU(cla: 0x00, ins: 0xA4, p1: 0x00, p2: 0x0C, data: fileID)
+    }
+
+    static func t4tReadBinary(offset: UInt16, length: UInt8) -> APDU {
+        APDU(cla: 0x00, ins: 0xB0, p1: UInt8(offset >> 8), p2: UInt8(offset & 0xFF), data: [],
+             expectedResponseLength: Int(length))
+    }
+
+    static func t4tUpdateBinary(offset: UInt16, data: [UInt8]) -> APDU {
+        APDU(cla: 0x00, ins: 0xD6, p1: UInt8(offset >> 8), p2: UInt8(offset & 0xFF), data: data)
+    }
+
+    /// Capability Container: CCLEN(2) version(1) MLe(2) MLc(2), then the NDEF File Control TLV
+    /// T=04 L=06 FileID(2) MaxSize(2) ReadAccess(1) WriteAccess(1). Returns the file ID.
+    static func ndefFileID(fromCC cc: [UInt8]) -> [UInt8]? {
+        guard cc.count >= 11, cc[7] == 0x04, cc[8] == 0x06 else { return nil }
+        return [cc[9], cc[10]]
+    }
+
+    /// The plain write sequence with a known file ID: select the NDEF application and file, clear
+    /// NLEN, write the message, set NLEN. Kept byte-identical with mac-bridge/esl_core.py.
+    static func t4tNDEFWriteAPDUs(message: [UInt8], fileID: [UInt8] = defaultNDEFFileID) -> [APDU] {
         precondition(message.count <= 0xFF, "message too long for one short UPDATE BINARY")
-        let length = UInt8(message.count)
         return [
-            APDU(cla: 0x00, ins: 0xA4, p1: 0x04, p2: 0x00,
-                 data: [0xD2, 0x76, 0x00, 0x00, 0x85, 0x01, 0x01], expectedResponseLength: 256),
-            APDU(cla: 0x00, ins: 0xA4, p1: 0x00, p2: 0x0C, data: [0xE1, 0x04]),
-            APDU(cla: 0x00, ins: 0xD6, p1: 0x00, p2: 0x00, data: [0x00, 0x00]),
-            APDU(cla: 0x00, ins: 0xD6, p1: 0x00, p2: 0x02, data: message),
-            APDU(cla: 0x00, ins: 0xD6, p1: 0x00, p2: 0x00, data: [0x00, length]),
+            t4tSelectApplication(),
+            t4tSelectFile(fileID),
+            t4tUpdateBinary(offset: 0, data: [0x00, 0x00]),
+            t4tUpdateBinary(offset: 2, data: message),
+            t4tUpdateBinary(offset: 0, data: [0x00, UInt8(message.count)]),
         ]
     }
 
     static func hex(_ bytes: [UInt8]) -> String {
         bytes.map { String(format: "%02x", $0) }.joined()
     }
+
+    // MARK: ESL frames
 
     /// XModem.sendEslId(): asks the tag for its 20-byte ID record.
     static func sendEslId() -> [UInt8] {

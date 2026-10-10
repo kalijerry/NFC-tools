@@ -1,5 +1,8 @@
 import Combine
 import Foundation
+#if canImport(UIKit)
+import UIKit
+#endif
 
 /// One frame the app would send, shown so it can be compared with the Android app's logcat hex dumps.
 struct FramePreview: Identifiable {
@@ -18,7 +21,7 @@ final class HeartbeatModel: ObservableObject {
     @Published var keyBase64: String
     @Published private(set) var log: [String] = []
     @Published private(set) var isBusy = false
-    /// APDU by default: on an ISO 7816 tag CoreNFC cannot send raw frames at all.
+    /// APDU by default: both device tests classified the tag as ISO 7816, where raw frames cannot be sent.
     @Published var frameTransport: FrameTransport = .apdu
     /// APDU path: also send Le=00, in case the firmware only returns data when asked for it.
     @Published var apduLe = false
@@ -39,6 +42,8 @@ final class HeartbeatModel: ObservableObject {
         return [UInt8](data)
     }
 
+    var logText: String { log.joined(separator: "\n") }
+
     var framePreview: [FramePreview] {
         guard let key = keyBytes else { return [] }
         func hex(_ build: () throws -> [UInt8]) -> String {
@@ -56,6 +61,17 @@ final class HeartbeatModel: ObservableObject {
     func saveKey() {
         defaults.set(keyBase64, forKey: Self.defaultsKey)
         append("密钥已保存")
+    }
+
+    func copyLog() {
+        #if canImport(UIKit)
+        UIPasteboard.general.string = logText
+        append("日志已复制到剪贴板（\(log.count) 行）")
+        #endif
+    }
+
+    func clearLog() {
+        log.removeAll()
     }
 
     func sendHeartbeat() async {

@@ -135,6 +135,18 @@ class ProtocolVectors(unittest.TestCase):
         self.assertEqual(message.hex(), "d1011254027a68e6b189e69c94e7a791e68a80453331")
         self.assertEqual(len(core.t4t_ndef_write_apdus(message)), 5)
 
+    def test_type4_builders_and_cc_parse(self):
+        self.assertEqual(core.t4t_select_application().hex(), "00a4040007d276000085010100")
+        self.assertEqual(core.t4t_select_file(core.CC_FILE_ID).hex(), "00a4000c02e103")
+        self.assertEqual(core.t4t_read_binary(0, 15).hex(), "00b000000f")
+        self.assertEqual(core.t4t_update_binary(2, b"\x01\x02").hex(), "00d60002020102")
+        self.assertEqual(core.ndef_file_id_from_cc(bytes.fromhex("000f20003b00340406e10400ff0000")), b"\xe1\x04")
+        self.assertIsNone(core.ndef_file_id_from_cc(bytes.fromhex("000f20003b003404")))
+        self.assertIsNone(core.ndef_file_id_from_cc(bytes.fromhex("000f20003b00340405e10400ff0000")))
+        apdus = core.t4t_ndef_write_apdus(core.vendor_ndef_message())
+        self.assertEqual(apdus[3].hex(), "00d6000216d1011254027a68e6b189e69c94e7a791e68a80453331")
+        self.assertEqual(apdus[4].hex(), "00d60000020016")
+
     def test_apdu_wrapping_of_bound_led_frame(self):
         bound = h(ORACLE["light_red_10_bound"])
         apdu = core.as_apdu(bound)

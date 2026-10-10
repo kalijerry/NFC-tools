@@ -1,12 +1,24 @@
 import CommonCrypto
+import Foundation
 
 /// AES/ECB/NoPadding, the cipher used by the Android app's `CipherFrameCodec`.
 /// Key length 16, 24 or 32 bytes; input must be a multiple of 16 bytes.
 enum AESECB {
-    enum Failure: Error, Equatable {
+    enum Failure: LocalizedError, Equatable {
         case badKeyLength(Int)
         case badBlockLength(Int)
         case cryptFailed(Int32)
+
+        var errorDescription: String? {
+            switch self {
+            case .badKeyLength(let count):
+                return "AES 密钥长度错误（\(count) 字节，需要 16/24/32）"
+            case .badBlockLength(let count):
+                return "AES 输入不是 16 字节的整数倍（\(count) 字节）"
+            case .cryptFailed(let status):
+                return "AES 运算失败（CommonCrypto 状态 \(status)）"
+            }
+        }
     }
 
     private static let blockSize = 16

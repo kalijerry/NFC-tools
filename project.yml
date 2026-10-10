@@ -23,10 +23,9 @@ targets:
         CFBundleShortVersionString: "0.1.0"
         CFBundleVersion: "1"
         NFCReaderUsageDescription: 用于与电子价签通信（发送心跳、读取心跳信道）
-        # CoreNFC only reports a tag as ISO 7816 if it answers SELECT for one of these AIDs.
-        # The Android flow requires an NDEF-capable (Type 4) tag, so the NDEF application AID is the best guess.
-        com.apple.developer.nfc.readersession.iso7816.select-identifiers:
-          - D2760000850101
+        # No com.apple.developer.nfc.readersession.iso7816.select-identifiers key on purpose: the ESL
+        # tag answers SELECT for any AID, and with no key at all CoreNFC still reports it as ISO 7816
+        # (two device tests, 2026-10-10). Nothing about the tag is assumed at discovery.
         UILaunchScreen: {}
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait

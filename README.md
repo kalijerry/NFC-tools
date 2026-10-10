@@ -54,19 +54,19 @@ ESL 帧不是 APDU 格式：第 5 个字节是命令码（0x0A/0x0C 等），而
 日志：`检测到 ISO 7816 标签，AID F0000000000001，historical 无，appData 无；NDEF 写入失败（Stack Error）`，随后 `ParseError 0`（价签 ID 响应过短）。
 
 - 价签对占位 AID 的 SELECT 也回成功。只要 Info.plist 里列了任何 AID，CoreNFC 就把它归为 ISO 7816，原始帧路径不可达。由此增加 `no-iso7816-key` 版本。
-- CoreNFC 自带的 Type 4 NDEF 流程失败（Stack Error），而 Android 的 `Ndef.writeNdefMessage` 能成功。现在失败后会用同样的 Type 4 APDU 序列手动再写一次，并记录每一步的状态字。
+- CoreNFC 自带的 Type 4 NDEF 流程失败（Stack Error），而 Android 的 `Ndef.writeNdefMessage` 能成功。现在失败后会手动执行 Type 4 流程：选 NDEF 应用 → 读 CC 取得文件号 → 写入 → 读回 NLEN 校验，每一步的完整响应字节都进日志，只有读回一致才算成功。这也是判断"固件是否对任何 APDU 返回数据"最直接的探针。
 - APDU 形式的 sendEslId 只收到状态字，没有 ID 记录。当时的 App 没有记录原始响应，不知道是 `90 00` 还是 `6A xx`。现在每一帧的发送和响应字节都进日志，解析错误也带上原始字节。
-- 待验证的假设：固件只匹配原始帧 `00 C0 00 LEN CMD`，APDU 多出的 Lc 字节使其不匹配，于是泛泛回 `90 00`。若 `no-iso7816-key` 版本把价签识别为 MIFARE，原始帧就能用 `sendMiFareCommand` 发出，这是 iOS 上唯一等价于 Android `IsoDep.transceive` 的途径。
+- 假设（第二次测试后仍待 APDU 日志证实）：固件只匹配原始帧 `00 C0 00 LEN CMD`，APDU 多出的 Lc 字节使其不匹配，于是泛泛回 `90 00`。MIFARE 路径已被第二次测试否定。
 - 新增「APDU 附带 Le=00」开关，排除「固件想返回数据但没被请求」的可能。
 
 ## 第二次真机测试（2026-10-10，`no-iso7816-key` 版本，闪灯 [原始帧]）
 
-不声明任何 AID 时，CoreNFC 仍把价签报告为 ISO 7816 标签，原始帧发送因此失败（`frameNotRepresentableAsAPDU`）。CoreNFC 对 ISO 7816 标签只提供 `sendCommand(apdu:)`，没有发原始 ISO-DEP 帧的接口，所以 **在 iPhone 上用公开 API 复现 Android 的 `IsoDep.transceive` 已确认不可行**。剩下的变数只有一个：价签固件对 APDU 包装的帧回了什么（见日志里的 `←` 行）。
+不声明任何 AID 时，CoreNFC 仍把价签报告为 ISO 7816 标签，原始帧发送因此失败（`frameNotRepresentableAsAPDU`）。证据目前只有用户转述的错误文案「NFC Core 只能是 ISO 7816」，对应该错误；完整的「检测到 …」日志行尚未拿到。CoreNFC 对 ISO 7816 标签只提供 `sendCommand(apdu:)`，没有发原始 ISO-DEP 帧的接口，所以 **在 iPhone 上用公开 API 复现 Android 的 `IsoDep.transceive` 已确认不可行**。剩下的变数只有一个：价签固件对 APDU 包装的帧回了什么（见日志里的 `←` 行）。
 
 ## 验证情况
 
 已验证（macOS，`swiftc`，Swift 6.2）：
-- `Tests/main.swift`：49 项全部通过（含 APDU 方式的整段会话、闪灯和关灯）。AES 通过 FIPS-197 向量，CRC 通过 `123456789 → 0x31C3`，心跳/读取/sendEslId/getRandom/sendRandom 帧与参考实现逐字节一致，ESL ID 绑定 CRC 正确，完整会话在模拟价签上结果正确（含 `6A 83`、`6A 82` 分支）。
+- `Tests/main.swift`：57 项全部通过（含 APDU 方式的整段会话、闪灯和关灯）。AES 通过 FIPS-197 向量，CRC 通过 `123456789 → 0x31C3`，心跳/读取/sendEslId/getRandom/sendRandom 帧与参考实现逐字节一致，ESL ID 绑定 CRC 正确，完整会话在模拟价签上结果正确（含 `6A 83`、`6A 82` 分支）。
 - `Core/` 与 SwiftUI 界面（`App/`，不含入口）通过 macOS SDK 的类型检查。
 - `NFC/CoreNFCTagSessionRunner.swift` 只做了语法检查（CoreNFC 不在 macOS SDK 中）。
 - `project.yml` 已用 XcodeGen 2.46.0 生成 `PengPengHeartbeat.xcodeproj`。

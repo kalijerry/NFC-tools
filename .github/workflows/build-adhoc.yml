@@ -4,6 +4,9 @@ name: Build signed IPA (Ad Hoc)
 #   BUILD_CERTIFICATE_BASE64  Apple Distribution certificate + private key (.p12), base64
 #   P12_PASSWORD              password of that .p12
 #   ADHOC_PROFILE_BASE64      Ad Hoc provisioning profile (.mobileprovision), base64, with NFC Tag Reading
+#
+# One build. Info.plist deliberately has no com.apple.developer.nfc.readersession.iso7816.select-identifiers
+# key: both device tests classified the ESL tag as ISO 7816 whatever that list contained.
 on:
   workflow_dispatch:
 
@@ -13,15 +16,6 @@ permissions:
 jobs:
   adhoc:
     runs-on: macos-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        variant:
-          # Both device tests classified the ESL tag as ISO 7816 whatever the AID list (it answers
-          # SELECT for any AID, and with no key at all CoreNFC still reports ISO 7816), so one
-          # build is enough. No select-identifiers key: nothing is assumed about the tag.
-          - name: no-iso7816-key
-            aid: ""
     steps:
       - uses: actions/checkout@v4
 
@@ -93,17 +87,6 @@ jobs:
           /usr/libexec/PlistBuddy -c 'Print :Entitlements:com.apple.developer.nfc.readersession.formats' "$RUNNER_TEMP/profile.plist" \
             || { echo "::error::The profile has no NFC Tag Reading entitlement. Enable it on the App ID, then regenerate and download the profile."; exit 1; }
 
-      - name: Set ISO 7816 AID for this variant
-        run: |
-          KEY=com.apple.developer.nfc.readersession.iso7816.select-identifiers
-          if [ -z "${{ matrix.variant.aid }}" ]; then
-            /usr/libexec/PlistBuddy -c "Delete :$KEY" App/Info.plist
-            echo "select-identifiers removed for this variant"
-          else
-            /usr/libexec/PlistBuddy -c "Set :$KEY:0 ${{ matrix.variant.aid }}" App/Info.plist
-            /usr/libexec/PlistBuddy -c "Print :$KEY" App/Info.plist
-          fi
-
       - name: Archive (Release, signed)
         run: |
           set -euo pipefail
@@ -148,26 +131,29 @@ jobs:
             -exportPath "$RUNNER_TEMP/export"
           IPA=$(find "$RUNNER_TEMP/export" -name '*.ipa' | head -1)
           test -n "$IPA"
-          cp "$IPA" "PengPengHeartbeat-adhoc-${{ matrix.variant.name }}.ipa"
+          cp "$IPA" PengPengHeartbeat-adhoc.ipa
 
-      - name: Verify NFC entitlement and AID in the signed app
+      - name: Verify NFC entitlement and Info.plist in the signed app
         run: |
           set -euo pipefail
           CHECK="$RUNNER_TEMP/check"
           rm -rf "$CHECK" && mkdir -p "$CHECK"
-          unzip -q "PengPengHeartbeat-adhoc-${{ matrix.variant.name }}.ipa" -d "$CHECK"
+          unzip -q PengPengHeartbeat-adhoc.ipa -d "$CHECK"
           APP=$(find "$CHECK/Payload" -maxdepth 1 -name '*.app' | head -1)
           codesign -d --entitlements :- "$APP" > "$RUNNER_TEMP/entitlements.plist" 2>/dev/null
           grep -q 'com.apple.developer.nfc.readersession.formats' "$RUNNER_TEMP/entitlements.plist" \
             || { echo "::error::The signed app has no NFC entitlement"; exit 1; }
           echo "NFC entitlement present"
-          /usr/libexec/PlistBuddy -c 'Print :com.apple.developer.nfc.readersession.iso7816.select-identifiers' "$APP/Info.plist" \
-            || echo "select-identifiers absent (intended for this variant)"
+          if /usr/libexec/PlistBuddy -c 'Print :com.apple.developer.nfc.readersession.iso7816.select-identifiers' "$APP/Info.plist" 2>/dev/null; then
+            echo "::error::Info.plist still declares ISO 7816 select-identifiers; the build must not"
+            exit 1
+          fi
+          echo "select-identifiers absent, as intended"
 
       - uses: actions/upload-artifact@v4
         with:
-          name: PengPengHeartbeat-adhoc-${{ matrix.variant.name }}
-          path: PengPengHeartbeat-adhoc-${{ matrix.variant.name }}.ipa
+          name: PengPengHeartbeat-adhoc
+          path: PengPengHeartbeat-adhoc.ipa
 
       - name: Remove temporary keychain
         if: always()

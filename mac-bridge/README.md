@@ -24,7 +24,7 @@ python3 -m pip install -r requirements.txt   # or: pip install cryptography
 python3 -m unittest discover -s . -p 'test_*.py' -v
 ```
 
-35 tests: protocol vectors, session logic (raw and APDU), and the simulated end-to-end path.
+36 tests: protocol vectors, session logic (raw and APDU), and the simulated end-to-end path.
 
 ## Hardware test (needs an ACR122U-class reader and one spare tag)
 

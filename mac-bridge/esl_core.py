@@ -176,17 +176,45 @@ def vendor_ndef_message() -> bytes:
     return bytes([0xD1, 0x01, len(payload), 0x54]) + payload
 
 
-def t4t_ndef_write_apdus(message: bytes) -> list[bytes]:
-    """NFC Forum Type 4 tag write: select the NDEF application and file, clear NLEN, write, set NLEN."""
+NDEF_APP_AID = bytes.fromhex("D2760000850101")
+CC_FILE_ID = bytes([0xE1, 0x03])
+DEFAULT_NDEF_FILE_ID = bytes([0xE1, 0x04])  # used only when the Capability Container cannot be read
+
+
+def t4t_select_application() -> bytes:
+    return b"\x00\xA4\x04\x00\x07" + NDEF_APP_AID + b"\x00"
+
+
+def t4t_select_file(file_id: bytes) -> bytes:
+    return b"\x00\xA4\x00\x0C\x02" + file_id
+
+
+def t4t_read_binary(offset: int, length: int) -> bytes:
+    return bytes([0x00, 0xB0, offset >> 8, offset & 0xFF, length])
+
+
+def t4t_update_binary(offset: int, data: bytes) -> bytes:
+    return bytes([0x00, 0xD6, offset >> 8, offset & 0xFF, len(data)]) + data
+
+
+def ndef_file_id_from_cc(cc: bytes) -> bytes | None:
+    """CC: CCLEN(2) version(1) MLe(2) MLc(2), then NDEF File Control TLV T=04 L=06 FileID(2) ..."""
+    if len(cc) < 11 or cc[7] != 0x04 or cc[8] != 0x06:
+        return None
+    return cc[9:11]
+
+
+def t4t_ndef_write_apdus(message: bytes, file_id: bytes = DEFAULT_NDEF_FILE_ID) -> list[bytes]:
+    """Plain Type 4 write with a known file ID: select app and file, clear NLEN, write, set NLEN."""
     if len(message) > 0xFF:
         raise ValueError("message too long for a short UPDATE BINARY")
     n = len(message)
     return [
-        bytes.fromhex("00A4040007D2760000850101" + "00"),
-        bytes.fromhex("00A4000C02E104"),
-        bytes.fromhex("00D6000002") + bytes(2),
-        bytes([0x00, 0xD6, 0x00, 0x02, n]) + message,
-        bytes([0x00, 0xD6, 0x00, 0x00, 0x02, n >> 8, n & 0xFF]),
+        t4t_select_application(),
+        t4t_select_file(file_id),
+        t4t_update_binary(0, bytes(2)),
+        t4t_update_binary(2, message),
+        t4t_update_binary(0, bytes([n >> 8, n & 0xFF])),
     ]
 
 
