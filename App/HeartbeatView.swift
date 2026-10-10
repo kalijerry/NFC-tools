@@ -28,10 +28,12 @@ struct HeartbeatView: View {
                         Text("原始帧").tag(FrameTransport.rawFrame)
                     }
                     .pickerStyle(.segmented)
+                    Toggle("APDU 附带 Le=00（请求返回数据）", isOn: $model.apduLe)
+                        .disabled(model.frameTransport != .apdu)
                 } header: {
                     Text("发送方式")
                 } footer: {
-                    Text("原始帧与 Android 相同，但 iOS 只能在价签被识别为 MIFARE 时尝试发送。APDU 方式把每一帧（包括握手）包装成 ISO 7816 命令，价签固件是否接受需要真机验证。日志会显示 iOS 把价签识别成了什么。")
+                    Text("原始帧与 Android 相同，但 iOS 只能在价签被识别为 MIFARE 时发送。APDU 方式把每一帧（包括握手）包装成 ISO 7816 命令。日志会记录 iOS 识别到的标签类型、NDEF 写入结果，以及每一帧的发送和响应字节。")
                 }
 
                 Section("快速心跳") {
@@ -76,6 +78,7 @@ struct HeartbeatView: View {
                 Section("日志") {
                     ForEach(Array(model.log.enumerated()), id: \.offset) { _, line in
                         Text(line)
+                            .font(line.hasPrefix("    ") ? .system(.caption2, design: .monospaced) : .body)
                             .textSelection(.enabled)
                     }
                 }

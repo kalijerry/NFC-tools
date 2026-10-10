@@ -20,6 +20,8 @@ final class HeartbeatModel: ObservableObject {
     @Published private(set) var isBusy = false
     /// APDU by default: on an ISO 7816 tag CoreNFC cannot send raw frames at all.
     @Published var frameTransport: FrameTransport = .apdu
+    /// APDU path: also send Le=00, in case the firmware only returns data when asked for it.
+    @Published var apduLe = false
     @Published var ledColor: ESLFrame.LEDColor = .red
     @Published var ledCount: UInt16 = 10
 
@@ -40,12 +42,12 @@ final class HeartbeatModel: ObservableObject {
     var framePreview: [FramePreview] {
         guard let key = keyBytes else { return [] }
         func hex(_ build: () throws -> [UInt8]) -> String {
-            (try? build()).map(Self.hexString) ?? "—"
+            (try? build()).map(ESLFrame.hex) ?? "—"
         }
         return [
             FramePreview(name: "发送心跳 (hb)", hex: hex { try ESLFrame.heartbeat(key: key) }),
             FramePreview(name: "读取心跳信道 (readHBCH)", hex: hex { try ESLFrame.readHeartbeatChannel(key: key) }),
-            FramePreview(name: "sendEslId", hex: Self.hexString(ESLFrame.sendEslId())),
+            FramePreview(name: "sendEslId", hex: ESLFrame.hex(ESLFrame.sendEslId())),
             FramePreview(name: "getRandom", hex: hex { try ESLFrame.getRandom(key: key) }),
             FramePreview(name: "闪灯 (light)", hex: hex { try ESLFrame.led(key: key, color: ledColor.rawValue, count: ledCount) }),
         ]
@@ -98,23 +100,32 @@ final class HeartbeatModel: ObservableObject {
             return
         }
         let via = frameTransport
-        let label = "\(title) [\(via == .apdu ? "APDU" : "原始帧")]"
+        let le = apduLe
+        let mode = via == .apdu ? (le ? "APDU+Le" : "APDU") : "原始帧"
+        let label = "\(title) [\(mode)]"
         isBusy = true
         defer { isBusy = false }
         // Read after the action, so the summary includes the NDEF write result. Kept on failure too:
-        // a device test needs to know what iOS detected.
+        // a device test needs to know what iOS detected and what the tag answered.
         var summary: String?
+        let trace = SessionTrace()
         do {
             let text = try await runner.withTag { transport -> String in
                 defer { summary = transport.tagSummary }
-                return try await action(HeartbeatSession(key: key, transport: transport, via: via))
+                let session = HeartbeatSession(key: key, transport: transport, via: via, apduLe: le, trace: trace)
+                return try await action(session)
             }
-            if let summary { append("\(label)：检测到 \(summary)") }
+            appendSession(label: label, summary: summary, trace: trace)
             append("\(label)：\(text)")
         } catch {
-            if let summary { append("\(label)：检测到 \(summary)") }
+            appendSession(label: label, summary: summary, trace: trace)
             append("\(label)：\(Self.errorText(error))")
         }
+    }
+
+    private func appendSession(label: String, summary: String?, trace: SessionTrace) {
+        if let summary { append("\(label)：检测到 \(summary)") }
+        for line in trace.lines { append("    \(line)") }
     }
 
     private static func errorText(_ error: Error) -> String {
@@ -126,10 +137,6 @@ final class HeartbeatModel: ObservableObject {
 
     private func append(_ line: String) {
         log.append(line)
-        if log.count > 200 { log.removeFirst(log.count - 200) }
-    }
-
-    private static func hexString(_ bytes: [UInt8]) -> String {
-        bytes.map { String(format: "%02x", $0) }.joined()
+        if log.count > 400 { log.removeFirst(log.count - 400) }
     }
 }

@@ -55,6 +55,10 @@ struct HeartbeatSession {
     let key: [UInt8]
     let transport: ESLTagTransport
     var via: FrameTransport = .rawFrame
+    /// APDU path only: append Le=00 (case 4) so a strict ISO 7816 firmware may return data.
+    var apduLe = false
+    /// Every frame sent and every response received, as hex, for the device log.
+    var trace: SessionTrace? = nil
 
     func sendHeartbeat() async throws -> HeartbeatOutcome {
         let frame = try ESLFrame.heartbeat(key: key)
@@ -94,20 +98,32 @@ struct HeartbeatSession {
         return .transferFailed
     }
 
-    /// Sends one frame the selected way. On the APDU path CoreNFC appends SW1 SW2 to the response
-    /// data. A trailing 90 00 after data is dropped so the parsers see the same bytes as on the raw
-    /// path; a bare status word (for example 90 00 or 6A 82) is passed through unchanged.
-    /// This normalisation is an assumption about how the firmware would answer APDUs.
+    /// Sends one frame the selected way and records both directions in the trace.
+    /// On the APDU path CoreNFC appends SW1 SW2 to the response data. A trailing 90 00 after data is
+    /// dropped so the parsers see the same bytes as on the raw path; a bare status word (for example
+    /// 90 00 or 6A 82) is passed through unchanged. This normalisation is an assumption about how
+    /// the firmware would answer APDUs.
     private func exchange(_ frame: [UInt8]) async throws -> [UInt8] {
-        switch via {
-        case .rawFrame:
-            return try await transport.transceive(frame)
-        case .apdu:
-            let response = try await transport.transceiveAPDU(ESLFrame.asAPDU(frame))
-            if response.count > 2, Array(response.suffix(2)) == [0x90, 0x00] {
-                return Array(response.dropLast(2))
+        do {
+            switch via {
+            case .rawFrame:
+                trace?.record("→ 帧 \(ESLFrame.hex(frame))")
+                let response = try await transport.transceive(frame)
+                trace?.record("← \(ESLFrame.hex(response))")
+                return response
+            case .apdu:
+                let apdu = ESLFrame.asAPDU(frame, le: apduLe)
+                trace?.record("→ APDU \(ESLFrame.hex(apdu.serialized))")
+                let response = try await transport.transceiveAPDU(apdu)
+                trace?.record("← \(ESLFrame.hex(response))")
+                if response.count > 2, Array(response.suffix(2)) == [0x90, 0x00] {
+                    return Array(response.dropLast(2))
+                }
+                return response
             }
-            return response
+        } catch {
+            trace?.record("✕ \(error.localizedDescription)")
+            throw error
         }
     }
 

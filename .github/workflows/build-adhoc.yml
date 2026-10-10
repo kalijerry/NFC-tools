@@ -24,6 +24,12 @@ jobs:
           # reported as MIFARE, where the raw-frame path (sendMiFareCommand) can be tried.
           - name: no-aid
             aid: F0000000000001
+          # No select-identifiers key at all. The first device test showed the ESL tag answers
+          # SELECT for any AID, so every listed AID makes CoreNFC report it as ISO 7816 (no raw
+          # path). Without the key an ISO 14443-A tag may surface as MIFARE, where raw frames
+          # can be sent with sendMiFareCommand.
+          - name: no-iso7816-key
+            aid: ""
     steps:
       - uses: actions/checkout@v4
 
@@ -97,8 +103,14 @@ jobs:
 
       - name: Set ISO 7816 AID for this variant
         run: |
-          /usr/libexec/PlistBuddy -c "Set :com.apple.developer.nfc.readersession.iso7816.select-identifiers:0 ${{ matrix.variant.aid }}" App/Info.plist
-          /usr/libexec/PlistBuddy -c 'Print :com.apple.developer.nfc.readersession.iso7816.select-identifiers' App/Info.plist
+          KEY=com.apple.developer.nfc.readersession.iso7816.select-identifiers
+          if [ -z "${{ matrix.variant.aid }}" ]; then
+            /usr/libexec/PlistBuddy -c "Delete :$KEY" App/Info.plist
+            echo "select-identifiers removed for this variant"
+          else
+            /usr/libexec/PlistBuddy -c "Set :$KEY:0 ${{ matrix.variant.aid }}" App/Info.plist
+            /usr/libexec/PlistBuddy -c "Print :$KEY" App/Info.plist
+          fi
 
       - name: Archive (Release, signed)
         run: |
@@ -157,7 +169,8 @@ jobs:
           grep -q 'com.apple.developer.nfc.readersession.formats' "$RUNNER_TEMP/entitlements.plist" \
             || { echo "::error::The signed app has no NFC entitlement"; exit 1; }
           echo "NFC entitlement present"
-          /usr/libexec/PlistBuddy -c 'Print :com.apple.developer.nfc.readersession.iso7816.select-identifiers' "$APP/Info.plist"
+          /usr/libexec/PlistBuddy -c 'Print :com.apple.developer.nfc.readersession.iso7816.select-identifiers' "$APP/Info.plist" \
+            || echo "select-identifiers absent (intended for this variant)"
 
       - uses: actions/upload-artifact@v4
         with:

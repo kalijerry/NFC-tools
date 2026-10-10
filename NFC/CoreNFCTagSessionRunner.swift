@@ -2,9 +2,8 @@
 import CoreNFC
 import Foundation
 
-/// The ISO 14443 tag kinds CoreNFC can hand over. Which one an ESL tag shows up as is unknown
-/// until a device test: ISO 7816 if it answers SELECT for an AID in Info.plist, otherwise
-/// possibly MIFARE.
+/// The ISO 14443 tag kinds CoreNFC can hand over. Which one an ESL tag shows up as depends on the
+/// Info.plist AID list: ISO 7816 if it answers SELECT for a listed AID, otherwise possibly MIFARE.
 enum DetectedTag {
     case iso7816(NFCISO7816Tag)
     case miFare(NFCMiFareTag)
@@ -155,15 +154,36 @@ final class CoreNFCTagTransport: ESLTagTransport {
         }
     }
 
-    /// Android aborts the session when this write fails. Here the failure is recorded in the summary
+    /// Android aborts the session when this write fails. Here a failure is recorded in the summary
     /// and the session continues, so a device test still shows whether the ESL frames get through.
+    /// CoreNFC's own Type 4 NDEF stack failed on the first device test ("Stack Error"), so after
+    /// it fails the same Type 4 sequence Android's Ndef.writeNdefMessage performs is sent as plain
+    /// APDUs, with every status word recorded.
     func writeVendorNDEF() async throws {
         do {
             try await writeNDEFRecord()
-            ndefNote = "NDEF 写入成功"
+            ndefNote = "NDEF 写入成功（CoreNFC）"
+            return
         } catch {
-            ndefNote = "NDEF 写入失败（\(error.localizedDescription)），继续发送帧"
+            ndefNote = "NDEF CoreNFC 写入失败（\(error.localizedDescription)）"
         }
+
+        let names = ["选NDEF应用", "选NDEF文件", "清NLEN", "写记录", "写NLEN"]
+        var steps: [String] = []
+        var completed = false
+        for (index, apdu) in ESLFrame.t4tNDEFWriteAPDUs(message: ESLFrame.vendorNDEFMessage()).enumerated() {
+            do {
+                let response = try await transceiveAPDU(apdu)
+                let sw = Array(response.suffix(2))
+                steps.append("\(names[index]) \(ESLFrame.hex(sw))")
+                guard sw == [0x90, 0x00] else { break }
+                completed = index == names.count - 1
+            } catch {
+                steps.append("\(names[index]) 错误 \(error.localizedDescription)")
+                break
+            }
+        }
+        ndefNote += "；手动 T4T \(completed ? "成功" : "失败")：" + steps.joined(separator: ", ")
     }
 
     private func writeNDEFRecord() async throws {
@@ -213,8 +233,7 @@ final class CoreNFCTagTransport: ESLTagTransport {
         }
     }
 
-    /// ISO 7816-4 APDU. CoreNFC serialises CLA INS P1 P2 Lc data itself (expectedResponseLength -1:
-    /// no Le byte, the closest match to the raw frame bytes).
+    /// ISO 7816-4 APDU. CoreNFC serialises CLA INS P1 P2 Lc data [Le] itself.
     func transceiveAPDU(_ apdu: ESLFrame.APDU) async throws -> [UInt8] {
         let command = NFCISO7816APDU(
             instructionClass: apdu.cla,
@@ -222,7 +241,7 @@ final class CoreNFCTagTransport: ESLTagTransport {
             p1Parameter: apdu.p1,
             p2Parameter: apdu.p2,
             data: Data(apdu.data),
-            expectedResponseLength: -1
+            expectedResponseLength: apdu.expectedResponseLength
         )
         return try await withCheckedThrowingContinuation { continuation in
             let completion: (Data, UInt8, UInt8, Error?) -> Void = { data, sw1, sw2, error in

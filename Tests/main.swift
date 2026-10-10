@@ -81,6 +81,29 @@ check((try? ESLFrame.eslid(fromResponse: [0x00, 0xC0, 0x00, 10, 0x00, 1, 2, 3, 4
 let channelResponse = bytes("00c000110c35c3b35884717dead42f7f0d386225ed9000")
 check((try? ESLFrame.channel(fromResponse: channelResponse, key: key)) == 151, "channel decoded from read response (151)")
 
+// NDEF helpers and APDU serialisation; reference bytes from mac-bridge/esl_core.py
+check(hex(ESLFrame.vendorNDEFMessage()) == "d1011254027a68e6b189e69c94e7a791e68a80453331", "vendor NDEF text record == Python oracle")
+let t4t = ESLFrame.t4tNDEFWriteAPDUs(message: ESLFrame.vendorNDEFMessage())
+check(t4t.count == 5
+        && hex(t4t[0].serialized) == "00a4040007d276000085010100"
+        && hex(t4t[1].serialized) == "00a4000c02e104"
+        && hex(t4t[2].serialized) == "00d60000020000",
+      "Type 4 NDEF write: select app (with Le), select file, clear NLEN == oracle")
+check(hex(t4t[3].serialized) == "00d6000216d1011254027a68e6b189e69c94e7a791e68a80453331"
+        && hex(t4t[4].serialized) == "00d60000020016",
+      "Type 4 NDEF write: write record, set NLEN == oracle")
+let ledBoundForAPDU = ESLFrame.bind(try! ESLFrame.led(key: key, color: 2, count: 10), eslid: eslidFromOracle)
+check(hex(ESLFrame.asAPDU(ledBoundForAPDU).serialized) == "00c000121400e5d043b266e69f7d5bad6bc26c4a88b700e628",
+      "APDU serialisation CLA INS P1 P2 Lc data == oracle")
+check(ESLFrame.asAPDU(ledBoundForAPDU, le: true).serialized == ESLFrame.asAPDU(ledBoundForAPDU).serialized + [0x00],
+      "APDU with Le appends a single 00")
+do {
+    _ = try ESLFrame.eslid(fromResponse: [0x6A, 0x81])
+    check(false, "short response throws ParseError")
+} catch {
+    check(error.localizedDescription.contains("6a81"), "ParseError description shows the raw response bytes")
+}
+
 // MARK: - Mock tag that checks the protocol as the real tag would
 
 final class MockTag: ESLTagTransport {
@@ -267,6 +290,21 @@ func runSessions() async {
     let shutRaw = try? await HeartbeatSession(key: key, transport: shutRawTag).shutLightWithoutHandshake()
     check(shutRaw == [0x90, 0x00] && !shutRawTag.ndefWritten,
           "shut-off via ShutLightActy path: no NDEF write, no handshake")
+
+    let tracedTag = MockTag(key: key)
+    tracedTag.acceptAPDU = true
+    let trace = SessionTrace()
+    let tracedOutcome = try? await HeartbeatSession(key: key, transport: tracedTag, via: .apdu, trace: trace).sendHeartbeat()
+    check(tracedOutcome == .sent && trace.lines.count == 8
+            && trace.lines[0] == "→ APDU 00c00001030530d0"
+            && trace.lines[1].hasPrefix("← ")
+            && trace.lines[6].hasPrefix("→ APDU 00c00011130a"),
+          "trace records every APDU and response")
+
+    let failingTrace = SessionTrace()
+    let rejecting = MockTag(key: key)
+    _ = try? await HeartbeatSession(key: key, transport: rejecting, via: .apdu, trace: failingTrace).sendHeartbeat()
+    check(failingTrace.lines == ["→ APDU 00c00001030530d0", "← 6a81"], "trace shows the status word the tag answered")
 }
 
 await runSessions()

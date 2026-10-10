@@ -1,3 +1,5 @@
+import Foundation
+
 /// Frame builders and response parsers, ported from the Android app's
 /// `model/xmodem/XModem.java` and `base/BaseNfcManagerActy.java`.
 ///
@@ -14,10 +16,22 @@ enum ESLFrame {
         case readHeartbeatChannel = 0x0C
     }
 
-    enum ParseError: Error, Equatable {
-        case shortResponse(Int)
-        case shortContent(declared: Int, actual: Int)
-        case channelBlockMissing(Int)
+    /// Each case carries the raw response, so the device log shows what the tag answered.
+    enum ParseError: LocalizedError, Equatable {
+        case shortResponse([UInt8])
+        case shortContent(declared: Int, response: [UInt8])
+        case channelBlockMissing([UInt8])
+
+        var errorDescription: String? {
+            switch self {
+            case .shortResponse(let response):
+                return "价签 ID 响应过短（\(response.count) 字节）：\(ESLFrame.hex(response))"
+            case .shortContent(let declared, let response):
+                return "价签 ID 内容不足（声明 \(declared) 字节）：\(ESLFrame.hex(response))"
+            case .channelBlockMissing(let response):
+                return "信道响应过短（\(response.count) 字节）：\(ESLFrame.hex(response))"
+            }
+        }
     }
 
     static let maxPayload = 240
@@ -30,13 +44,29 @@ enum ESLFrame {
     }
 
     /// ISO 7816-4 command. CoreNFC's NFCISO7816APDU(instructionClass:instructionCode:p1Parameter:p2Parameter:data:expectedResponseLength:)
-    /// serialises the same bytes: CLA INS P1 P2 Lc data.
+    /// serialises the same bytes: CLA INS P1 P2 Lc data [Le].
     struct APDU: Equatable {
         let cla: UInt8
         let ins: UInt8
         let p1: UInt8
         let p2: UInt8
         let data: [UInt8]
+        /// CoreNFC's expectedResponseLength: -1 sends no Le (case 3), 256 sends Le=00 (case 4).
+        var expectedResponseLength: Int = -1
+
+        /// The bytes CoreNFC puts on the air.
+        var serialized: [UInt8] {
+            precondition(data.count <= 255, "data too long for a short APDU")
+            var out = [cla, ins, p1, p2]
+            if !data.isEmpty {
+                out.append(UInt8(data.count))
+                out += data
+            }
+            if expectedResponseLength == 256 {
+                out.append(0x00)
+            }
+            return out
+        }
     }
 
     /// LightActy colours: red is the default (led_color = 2).
@@ -82,9 +112,38 @@ enum ESLFrame {
     /// Experimental: the frame's bytes after the 4-byte header (command code, payload, CRC) become
     /// the APDU data field. Mirrors `as_apdu` in mac-bridge/esl_core.py. Whether the tag firmware
     /// accepts this framing is unknown until it is tested on hardware.
-    static func asAPDU(_ frame: [UInt8]) -> APDU {
+    static func asAPDU(_ frame: [UInt8], le: Bool = false) -> APDU {
         precondition(frame.count > 5, "frame too short")
-        return APDU(cla: 0x00, ins: 0xC0, p1: 0x00, p2: frame[3], data: Array(frame[4...]))
+        return APDU(cla: 0x00, ins: 0xC0, p1: 0x00, p2: frame[3], data: Array(frame[4...]),
+                    expectedResponseLength: le ? 256 : -1)
+    }
+
+    /// BaseNfcManagerActy.createTextRecord: one well-known Text record, language "zh", as a short
+    /// NDEF record (MB, ME, SR set; TNF well-known; type "T").
+    static func vendorNDEFMessage() -> [UInt8] {
+        let language = Array("zh".utf8)
+        let text = Array("汉朔科技E31".utf8)
+        let payload = [UInt8(language.count)] + language + text
+        return [0xD1, 0x01, UInt8(payload.count), 0x54] + payload
+    }
+
+    /// NFC Forum Type 4 write, the sequence Android's Ndef.writeNdefMessage performs: select the
+    /// NDEF application, select the NDEF file, clear NLEN, write the message, set NLEN.
+    static func t4tNDEFWriteAPDUs(message: [UInt8]) -> [APDU] {
+        precondition(message.count <= 0xFF, "message too long for one short UPDATE BINARY")
+        let length = UInt8(message.count)
+        return [
+            APDU(cla: 0x00, ins: 0xA4, p1: 0x04, p2: 0x00,
+                 data: [0xD2, 0x76, 0x00, 0x00, 0x85, 0x01, 0x01], expectedResponseLength: 256),
+            APDU(cla: 0x00, ins: 0xA4, p1: 0x00, p2: 0x0C, data: [0xE1, 0x04]),
+            APDU(cla: 0x00, ins: 0xD6, p1: 0x00, p2: 0x00, data: [0x00, 0x00]),
+            APDU(cla: 0x00, ins: 0xD6, p1: 0x00, p2: 0x02, data: message),
+            APDU(cla: 0x00, ins: 0xD6, p1: 0x00, p2: 0x00, data: [0x00, length]),
+        ]
+    }
+
+    static func hex(_ bytes: [UInt8]) -> String {
+        bytes.map { String(format: "%02x", $0) }.joined()
     }
 
     /// XModem.sendEslId(): asks the tag for its 20-byte ID record.
@@ -133,10 +192,10 @@ enum ESLFrame {
     /// the 20-byte content is master(4) wake(4) extend(4) eslid(4) set/group/esl/mask(4).
     /// The ESL ID is content[12..<16].
     static func eslid(fromResponse response: [UInt8]) throws -> [UInt8] {
-        guard response.count >= 5 else { throw ParseError.shortResponse(response.count) }
+        guard response.count >= 5 else { throw ParseError.shortResponse(response) }
         let declared = Int(response[3])
         guard declared >= 20, response.count >= 5 + declared else {
-            throw ParseError.shortContent(declared: declared, actual: response.count - 5)
+            throw ParseError.shortContent(declared: declared, response: response)
         }
         return Array(response[(5 + 12)..<(5 + 16)])
     }
@@ -144,7 +203,7 @@ enum ESLFrame {
     /// BaseNfcManagerActy.readHBCH(..., true): the 16-byte block at [5..<21] decrypts to
     /// [channel, ...]. ReadHeartbeatActivity shows the first byte.
     static func channel(fromResponse response: [UInt8], key: [UInt8]) throws -> UInt8 {
-        guard response.count >= 21 else { throw ParseError.channelBlockMissing(response.count) }
+        guard response.count >= 21 else { throw ParseError.channelBlockMissing(response) }
         let plain = try AESECB.decrypt(key: key, Array(response[5..<21]))
         return plain[0]
     }

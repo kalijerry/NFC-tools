@@ -11,6 +11,7 @@
 		47F25D84CC1704BFAAD619F7 /* HeartbeatModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB5512E5C9FA61435DD1EB79 /* HeartbeatModel.swift */; };
 		4A0E81447221A7999D44F964 /* HeartbeatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 036866EF62F1B3A5DBF22CF3 /* HeartbeatView.swift */; };
 		4F1AF6F22F337CB13EA6115D /* AESECB.swift in Sources */ = {isa = PBXBuildFile; fileRef = 565B6412C4CA892F1C06A233 /* AESECB.swift */; };
+		8B8227E45E0CA352BA64B564 /* SessionTrace.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0E6B675F9910A87700D0AF95 /* SessionTrace.swift */; };
 		C8BFC8165DC036CFC0143C36 /* CRC16.swift in Sources */ = {isa = PBXBuildFile; fileRef = D53D95A45CAE658A55039850 /* CRC16.swift */; };
 		CC11750C0047A5ABBCDDB871 /* CoreNFCTagSessionRunner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67CE3D9F2D31F225EC721B26 /* CoreNFCTagSessionRunner.swift */; };
 		CE0D72488D9DAAF3841D658E /* ESLFrame.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA2B5A4CB5786750A12E9D19 /* ESLFrame.swift */; };
@@ -21,6 +22,7 @@
 /* Begin PBXFileReference section */
 		036866EF62F1B3A5DBF22CF3 /* HeartbeatView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HeartbeatView.swift; sourceTree = "<group>"; };
 		0C5FA5894C57D8008512D6F3 /* HeartbeatSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HeartbeatSession.swift; sourceTree = "<group>"; };
+		0E6B675F9910A87700D0AF95 /* SessionTrace.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionTrace.swift; sourceTree = "<group>"; };
 		1C5EAD5441267D7B6F934C21 /* PengPengHeartbeat.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = PengPengHeartbeat.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		461CD2048A8BBEC32C6FFF33 /* PengPengHeartbeatApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PengPengHeartbeatApp.swift; sourceTree = "<group>"; };
 		565B6412C4CA892F1C06A233 /* AESECB.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AESECB.swift; sourceTree = "<group>"; };
@@ -41,6 +43,7 @@
 				D53D95A45CAE658A55039850 /* CRC16.swift */,
 				DA2B5A4CB5786750A12E9D19 /* ESLFrame.swift */,
 				0C5FA5894C57D8008512D6F3 /* HeartbeatSession.swift */,
+				0E6B675F9910A87700D0AF95 /* SessionTrace.swift */,
 				EA72592386DBF8D78DE4D19C /* TransportErrors.swift */,
 			);
 			path = Core;
@@ -147,6 +150,7 @@
 				094262401404B2328A15BF49 /* HeartbeatSession.swift in Sources */,
 				4A0E81447221A7999D44F964 /* HeartbeatView.swift in Sources */,
 				EB0519E4F5D5018AAE93B25F /* PengPengHeartbeatApp.swift in Sources */,
+				8B8227E45E0CA352BA64B564 /* SessionTrace.swift in Sources */,
 				DC178ACC818C4FE68E8F0471 /* TransportErrors.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
