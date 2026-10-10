@@ -1,5 +1,12 @@
 # 碰碰 → iOS：快速心跳
 
+> **状态：已存档（2026-10-10）。** 四次真机测试证明，iPhone 自带 NFC（CoreNFC 公开 API）无法与这批汉朔价签完成任何 ESL 命令：
+> 检测需要列出 AID → 检测到后必为 ISO 7816 标签 → CoreNFC 只提供 APDU 接口 → 价签固件按原始帧 `00 C0 00 LEN CMD` 解析，
+> APDU 插入的 Lc 字节使命令码错位 → 价签回 `6A 82`。没有任何 APDU 形状能复现原始帧。详见「第四次真机测试」。
+> 可行的替代（外接读写器：USB-C CCID 读写器经 CryptoTokenKit，或 ESP32 + PN532 蓝牙桥）暂不推进。
+> 协议层（CRC、AES、帧、握手；Swift 与 Python 两套实现，共 93 项测试）与 Mac 端 PC/SC 桥接代码保留，可直接复用。
+
+
 移植范围：Android 版 `nfc.hs.com.mobilenfc`（5.0.1-rc3）的 **发送心跳** 和 **读取心跳信道**（对应 `HearbeatActy`、`ReadHeartbeatActivity`）。应用打开后直接就是这两个功能。
 
 ## 密钥是什么
