@@ -61,7 +61,13 @@ ESL 帧不是 APDU 格式：第 5 个字节是命令码（0x0A/0x0C 等），而
 
 ## 第二次真机测试（2026-10-10，`no-iso7816-key` 版本，闪灯 [原始帧]）
 
-不声明任何 AID 时，CoreNFC 仍把价签报告为 ISO 7816 标签，原始帧发送因此失败（`frameNotRepresentableAsAPDU`）。证据目前只有用户转述的错误文案「NFC Core 只能是 ISO 7816」，对应该错误；完整的「检测到 …」日志行尚未拿到。CoreNFC 对 ISO 7816 标签只提供 `sendCommand(apdu:)`，没有发原始 ISO-DEP 帧的接口，所以 **在 iPhone 上用公开 API 复现 Android 的 `IsoDep.transceive` 已确认不可行**。剩下的变数只有一个：价签固件对 APDU 包装的帧回了什么（见日志里的 `←` 行）。
+当时的报告是「不能发原始帧，显示 NFC Core 只能是 ISO 7816」，对应 `frameNotRepresentableAsAPDU`。**这个结果现在存疑**：同一 Bundle ID 的早期 `no-aid` 版本界面几乎相同、也会报同一个错误，新包可能并未装上；第三次测试（见下）表明不声明 AID 时价签根本检测不到。CoreNFC 对 ISO 7816 标签只提供 `sendCommand(apdu:)`，没有发原始 ISO-DEP 帧的接口，所以 **在 iPhone 上用公开 API 复现 Android 的 `IsoDep.transceive` 已确认不可行**。剩下的变数只有一个：价签固件对 APDU 包装的帧回了什么（见日志里的 `←` 行）。
+
+## 第三次真机测试（2026-10-10，`1a81d08`，Info.plist 无 AID 键）
+
+手机靠近价签没有任何反应（用户确认价签正常）。这与 CoreNFC 的文档行为一致：没有 `select-identifiers` 时，不是 MIFARE 的 ISO 14443-4 标签不会被上报。由此把 NDEF 应用 AID（`D2760000850101`、`D2760000850100`）加回 Info.plist。
+
+综合三次测试的结论：**声明 AID 才能检测到价签，检测到后一定是 ISO 7816 标签，CoreNFC 对它只有 APDU 接口；不声明 AID 则检测不到。两种情况下都没有原始帧路径。** 还没有拿到的信息：价签对 APDU 包装帧的具体回应（新版日志会完整记录）。
 
 ## 验证情况
 
@@ -79,7 +85,7 @@ ESL 帧不是 APDU 格式：第 5 个字节是命令码（0x0A/0x0C 等），而
 
 ## 签名安装到自己的 iPhone（Ad Hoc，不走 TestFlight）
 
-工作流 `.github/workflows/build-adhoc.yml` 只能手动触发。它用你的证书和 Ad Hoc 描述文件签名。现在只产出一个版本 `no-iso7816-key`（不声明 AID）：两次真机测试都表明，无论 AID 列表怎么设，CoreNFC 都把这块价签归为 ISO 7816 标签，所以多个版本没有意义。曾经的对比版本如下：
+工作流 `.github/workflows/build-adhoc.yml` 只能手动触发。它用你的证书和 Ad Hoc 描述文件签名，只产出一个版本（Info.plist 声明 NDEF 应用 AID；不声明则价签检测不到，见第三次真机测试）。曾经的对比版本如下：
 
 | 版本 | Info.plist 里的 AID | 预期 iOS 把价签识别为 | 能测的发送方式 |
 |---|---|---|---|

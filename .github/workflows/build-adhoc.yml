@@ -5,8 +5,9 @@ name: Build signed IPA (Ad Hoc)
 #   P12_PASSWORD              password of that .p12
 #   ADHOC_PROFILE_BASE64      Ad Hoc provisioning profile (.mobileprovision), base64, with NFC Tag Reading
 #
-# One build. Info.plist deliberately has no com.apple.developer.nfc.readersession.iso7816.select-identifiers
-# key: both device tests classified the ESL tag as ISO 7816 whatever that list contained.
+# One build. Info.plist lists the NDEF application AIDs under
+# com.apple.developer.nfc.readersession.iso7816.select-identifiers: without that key CoreNFC did not
+# report the ESL tag at all (third device test).
 on:
   workflow_dispatch:
 
@@ -144,11 +145,12 @@ jobs:
           grep -q 'com.apple.developer.nfc.readersession.formats' "$RUNNER_TEMP/entitlements.plist" \
             || { echo "::error::The signed app has no NFC entitlement"; exit 1; }
           echo "NFC entitlement present"
-          if /usr/libexec/PlistBuddy -c 'Print :com.apple.developer.nfc.readersession.iso7816.select-identifiers' "$APP/Info.plist" 2>/dev/null; then
-            echo "::error::Info.plist still declares ISO 7816 select-identifiers; the build must not"
+          FIRST_AID=$(/usr/libexec/PlistBuddy -c 'Print :com.apple.developer.nfc.readersession.iso7816.select-identifiers:0' "$APP/Info.plist" 2>/dev/null || true)
+          if [ "$FIRST_AID" != "D2760000850101" ]; then
+            echo "::error::Info.plist select-identifiers missing or unexpected (got '$FIRST_AID'); without it the tag is not detected"
             exit 1
           fi
-          echo "select-identifiers absent, as intended"
+          /usr/libexec/PlistBuddy -c 'Print :com.apple.developer.nfc.readersession.iso7816.select-identifiers' "$APP/Info.plist"
 
       - uses: actions/upload-artifact@v4
         with:

@@ -23,9 +23,12 @@ targets:
         CFBundleShortVersionString: "0.1.0"
         CFBundleVersion: "1"
         NFCReaderUsageDescription: 用于与电子价签通信（发送心跳、读取心跳信道）
-        # No com.apple.developer.nfc.readersession.iso7816.select-identifiers key on purpose: the ESL
-        # tag answers SELECT for any AID, and with no key at all CoreNFC still reports it as ISO 7816
-        # (two device tests, 2026-10-10). Nothing about the tag is assumed at discovery.
+        # Required for detection: without this key CoreNFC did not report the ESL tag at all (third
+        # device test, 2026-10-10). The tag answers SELECT for any AID, so the NDEF application AIDs
+        # (v2, then v1) are listed; it is then reported as an ISO 7816 tag with the NDEF app selected.
+        com.apple.developer.nfc.readersession.iso7816.select-identifiers:
+          - D2760000850101
+          - D2760000850100
         UILaunchScreen: {}
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
