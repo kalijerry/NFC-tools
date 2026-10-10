@@ -2,6 +2,8 @@ import Foundation
 
 /// Failures the transport can report without knowing which NFC stack is underneath.
 enum ESLTransportError: LocalizedError, Equatable {
+    case nfcUnavailable
+    case sessionBusy
     case unsupportedTagType
     case ndefNotWritable
     /// CoreNFC only sends ISO 7816-4 APDUs. The raw ESL frames are not APDUs (their 5th byte is
@@ -10,6 +12,10 @@ enum ESLTransportError: LocalizedError, Equatable {
 
     var errorDescription: String? {
         switch self {
+        case .nfcUnavailable:
+            return "这台设备不支持 NFC 标签读取"
+        case .sessionBusy:
+            return "上一个 NFC 会话还没有结束"
         case .unsupportedTagType:
             return "这不是 ISO 14443-4 (IsoDep) 价签"
         case .ndefNotWritable:

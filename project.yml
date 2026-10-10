@@ -1,7 +1,7 @@
 # XcodeGen spec. Generate the Xcode project with:  xcodegen generate
 name: PengPengHeartbeat
 options:
-  bundleIdPrefix: com.example
+  bundleIdPrefix: com.kalijerry
   deploymentTarget:
     iOS: "16.0"
 settings:
@@ -23,6 +23,10 @@ targets:
         CFBundleShortVersionString: "0.1.0"
         CFBundleVersion: "1"
         NFCReaderUsageDescription: 用于与电子价签通信（发送心跳、读取心跳信道）
+        # CoreNFC only reports a tag as ISO 7816 if it answers SELECT for one of these AIDs.
+        # The Android flow requires an NDEF-capable (Type 4) tag, so the NDEF application AID is the best guess.
+        com.apple.developer.nfc.readersession.iso7816.select-identifiers:
+          - D2760000850101
         UILaunchScreen: {}
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
@@ -33,7 +37,7 @@ targets:
           - TAG
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.example.pengpengheartbeat
+        PRODUCT_BUNDLE_IDENTIFIER: com.kalijerry.pengpengheartbeat
         GENERATE_INFOPLIST_FILE: NO
         CODE_SIGN_ENTITLEMENTS: App/PengPengHeartbeat.entitlements
 schemes:

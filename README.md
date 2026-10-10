@@ -43,6 +43,8 @@ ESL 帧不是 APDU 格式：第 5 个字节是命令码（0x0A/0x0C 等），而
 - 另一种思路是把同样的字节包装成 ISO 7816-4 APDU：`CLA=00 INS=C0 P1=00 P2=LEN Lc=数据长度 数据`。
   CoreNFC 的 `NFCISO7816APDU` 可以发送任意 CLA/INS/P1/P2/数据，所以这种包装在 iOS 上是能发出去的。
   Swift 的 `ESLFrame.asAPDU` 和 Python 的 `as_apdu` 都实现了它，并用同一组参考字节测试过。
+- App 里有「发送方式」选择器（ISO 7816 APDU / 原始帧），对心跳、读信道、闪灯、关灯和握手统一生效。
+  选 APDU 时，握手的每一帧也会包装成 APDU，因为 iOS 把价签识别成 ISO 7816 标签时，根本没有发送原始帧的途径。
 - **能不能被价签接受，无法离线判断**：价签固件是否识别这种包装，只能用真价签测试。
   已离线测试的只有字节格式本身。见 [mac-bridge/README.md](mac-bridge/README.md) 的硬件测试步骤。
 - 关灯有两条 Android 路径：`LightActy` 的「灭灯」先握手再发送，`ShutLightActy` 直接发送、无握手无 NDEF 写入。两条都已在 Core 中实现。
@@ -50,15 +52,40 @@ ESL 帧不是 APDU 格式：第 5 个字节是命令码（0x0A/0x0C 等），而
 ## 验证情况
 
 已验证（macOS，`swiftc`，Swift 6.2）：
-- `Tests/main.swift`：23 项全部通过。AES 通过 FIPS-197 向量，CRC 通过 `123456789 → 0x31C3`，心跳/读取/sendEslId/getRandom/sendRandom 帧与参考实现逐字节一致，ESL ID 绑定 CRC 正确，完整会话在模拟价签上结果正确（含 `6A 83`、`6A 82` 分支）。
+- `Tests/main.swift`：41 项全部通过（含 APDU 方式的整段会话、闪灯和关灯）。AES 通过 FIPS-197 向量，CRC 通过 `123456789 → 0x31C3`，心跳/读取/sendEslId/getRandom/sendRandom 帧与参考实现逐字节一致，ESL ID 绑定 CRC 正确，完整会话在模拟价签上结果正确（含 `6A 83`、`6A 82` 分支）。
 - `Core/` 与 SwiftUI 界面（`App/`，不含入口）通过 macOS SDK 的类型检查。
 - `NFC/CoreNFCTagSessionRunner.swift` 只做了语法检查（CoreNFC 不在 macOS SDK 中）。
 - `project.yml` 已用 XcodeGen 2.46.0 生成 `PengPengHeartbeat.xcodeproj`。
 
 未验证：
 - 参考帧来自我对 Java 逻辑的 Python 重写（AES 用 `cryptography` 库），**没有运行原版 Java**（本机没有 JDK）。
-- 没有在 iOS SDK 下编译（本机只有 Command Line Tools）。`NFCISO7816APDU(data:)` 是否为可失败初始化、`queryNDEFStatus` 等回调签名需要在 Xcode 中确认。
+- 本机没有 iOS SDK（只有 Command Line Tools），iOS 编译由 GitHub Actions 完成，至今每次都成功。
+- `mac-bridge/`：35 项离线测试通过（协议字节、会话逻辑、模拟读写器和模拟价签的端到端流程）。
 - 没有真实价签，没有真机测试。
+
+## 签名安装到自己的 iPhone（Ad Hoc，不走 TestFlight）
+
+工作流 `.github/workflows/build-adhoc.yml` 只能手动触发。它用你的证书和 Ad Hoc 描述文件签名，同时产出两个版本：
+
+| 版本 | Info.plist 里的 AID | 预期 iOS 把价签识别为 | 能测的发送方式 |
+|---|---|---|---|
+| `ndef-aid` | `D2760000850101`（NDEF 应用） | ISO 7816 标签 | 只有 APDU |
+| `no-aid` | `F0000000000001`（不会匹配的占位值） | 可能是 MIFARE 标签 | 原始帧（`sendMiFareCommand`）和 APDU |
+
+两个版本 Bundle ID 相同，装第二个会覆盖第一个。识别结果以 App 日志里的「检测到 …」为准。
+
+一次性准备（在开发者网页上完成）：
+
+1. **证书**：Certificates → + → Apple Distribution，上传 `ESL-tools/signing/PengPengDistribution.certSigningRequest`，下载得到 `.cer`，放进同一个目录。私钥 `distribution.key` 只在这台 Mac 上，不要上传或提交。
+2. **设备**：Devices → + → 填入 iPhone 的 UDID。
+3. **App ID**：`com.kalijerry.pengpengheartbeat`，勾选 NFC Tag Reading。
+4. **描述文件**：Profiles → + → Ad Hoc → 选这个 App ID、这张证书和这台设备 → 下载 `.mobileprovision`，放进 `ESL-tools/signing/`。
+
+然后把证书和私钥合成 `.p12`，和描述文件一起转成 Base64，放进仓库的三个 Secrets：
+`BUILD_CERTIFICATE_BASE64`、`P12_PASSWORD`、`ADHOC_PROFILE_BASE64`。之后在 Actions 页面手动运行 “Build signed IPA (Ad Hoc)”。
+
+安装：用数据线连接 iPhone，在 Finder 里选中手机，把 `.ipa` 拖进去；或者使用 Apple Configurator。
+仓库是公开的，签名材料只能放在 Secrets 里，建议改为私有仓库。
 
 ## 构建与运行
 

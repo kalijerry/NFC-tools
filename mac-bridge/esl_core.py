@@ -198,52 +198,68 @@ class TagTransport(Protocol):
     def transceive(self, frame: bytes) -> bytes: ...
 
 
-def authenticate(tag: TagTransport, key: bytes) -> bytes:
+VIA_RAW = "raw"
+VIA_APDU = "apdu"
+VIAS = (VIA_RAW, VIA_APDU)
+
+
+def exchange(tag: TagTransport, frame: bytes, via: str = VIA_RAW) -> bytes:
+    """Sends one frame the selected way. Mirrors HeartbeatSession.exchange in the iOS Core.
+
+    raw:  the frame as is (Android IsoDep.transceive).
+    apdu: the frame wrapped by as_apdu(). A trailing 90 00 after data is dropped so the parsers see
+          the same bytes as on the raw path; a bare status word is passed through. This assumes the
+          firmware answers an APDU with its usual reply followed by a status word.
+    """
+    if via == VIA_RAW:
+        return tag.transceive(frame)
+    if via == VIA_APDU:
+        response = tag.transceive(as_apdu(frame))
+        if len(response) > 2 and response[-2:] == SW_SUCCESS:
+            return response[:-2]
+        return response
+    raise ValueError(f"via must be one of {VIAS}")
+
+
+def authenticate(tag: TagTransport, key: bytes, via: str = VIA_RAW) -> bytes:
     """Steps 0 to 4 of the Android session. Returns the ESL ID."""
     tag.write_vendor_ndef()
-    eslid = eslid_from_response(tag.transceive(send_esl_id()))
-    challenge = tag.transceive(get_random(key))
+    eslid = eslid_from_response(exchange(tag, send_esl_id(), via))
+    challenge = exchange(tag, get_random(key), via)
     if challenge == SW_KEY_ERROR:
         raise KeyRejected("challenge answered 6A 82")
     if len(challenge) != 16:
         raise ProtocolError(f"challenge must be 16 bytes, got {len(challenge)}")
-    tag.transceive(send_random(aes_ecb(key, challenge)))
+    exchange(tag, send_random(aes_ecb(key, challenge)), via)
     tag.last_eslid = eslid  # kept for logging; not part of the protocol
     return eslid
 
 
-def session_heartbeat(tag: TagTransport, key: bytes) -> str:
+def session_heartbeat(tag: TagTransport, key: bytes, via: str = VIA_RAW) -> str:
     frame = heartbeat(key)
-    eslid = authenticate(tag, key)
-    return classify(tag.transceive(bind(frame, eslid)))
+    eslid = authenticate(tag, key, via)
+    return classify(exchange(tag, bind(frame, eslid), via))
 
 
-def session_read_channel(tag: TagTransport, key: bytes) -> int:
+def session_read_channel(tag: TagTransport, key: bytes, via: str = VIA_RAW) -> int:
     frame = read_channel(key)
-    eslid = authenticate(tag, key)
-    return channel_from_response(tag.transceive(bind(frame, eslid)), key)
+    eslid = authenticate(tag, key, via)
+    return channel_from_response(exchange(tag, bind(frame, eslid), via), key)
 
 
-def session_led(tag: TagTransport, key: bytes, color: str | int, count: int) -> str:
+def session_led(tag: TagTransport, key: bytes, color: str | int, count: int, via: str = VIA_RAW) -> str:
     frame = led(key, color, count)
-    eslid = authenticate(tag, key)
-    return classify(tag.transceive(bind(frame, eslid)))
+    eslid = authenticate(tag, key, via)
+    return classify(exchange(tag, bind(frame, eslid), via))
 
 
-def session_led_apdu(tag: TagTransport, key: bytes, color: str | int, count: int) -> bytes:
-    """Experiment: the same bound LED frame, sent as an APDU. Returns the raw response."""
-    frame = led(key, color, count)
-    eslid = authenticate(tag, key)
-    return tag.transceive(as_apdu(bind(frame, eslid)))
-
-
-def session_shut_light(tag: TagTransport, key: bytes) -> str:
+def session_shut_light(tag: TagTransport, key: bytes, via: str = VIA_RAW) -> str:
     """LightActy's 'off' path: handshake, then the frame."""
     frame = shut_light(key)
-    eslid = authenticate(tag, key)
-    return classify(tag.transceive(bind(frame, eslid)))
+    eslid = authenticate(tag, key, via)
+    return classify(exchange(tag, bind(frame, eslid), via))
 
 
-def session_shut_light_raw(tag: TagTransport, key: bytes) -> bytes:
+def session_shut_light_raw(tag: TagTransport, key: bytes, via: str = VIA_RAW) -> bytes:
     """ShutLightActy's path: the frame is sent directly, with no NDEF write and no handshake."""
-    return tag.transceive(shut_light(key))
+    return exchange(tag, shut_light(key), via)

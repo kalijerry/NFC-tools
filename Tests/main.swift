@@ -98,10 +98,20 @@ final class MockTag: ESLTagTransport {
 
     init(key: [UInt8]) { self.key = key }
 
+    var tagSummary: String { "mock tag" }
+
     /// Models a tag whose firmware either accepts APDU framing or answers 6A 81 (unknown instruction).
+    /// When it accepts, it unwraps the APDU back into the raw frame, answers it like the raw path,
+    /// and ends the reply with a status word, as an ISO 7816 card would.
     func transceiveAPDU(_ apdu: ESLFrame.APDU) async throws -> [UInt8] {
         apduFrames.append(apdu)
-        return acceptAPDU ? [0x90, 0x00] : [0x6A, 0x81]
+        guard acceptAPDU else { return [0x6A, 0x81] }
+        let raw = [apdu.cla, apdu.ins, apdu.p1, apdu.p2] + apdu.data
+        let response = try await transceive(raw)
+        if response.count == 2 || Array(response.suffix(2)) == [0x90, 0x00] {
+            return response
+        }
+        return response + [0x90, 0x00]
     }
 
     func writeVendorNDEF() async throws {
@@ -199,22 +209,58 @@ func runSessions() async {
     check(ESLFrame.ledPlain(color: 2, count: 10).count == 17 && ESLFrame.shutPlain.count == 17, "LED plaintexts are 17 bytes")
 
     let ledRawTag = MockTag(key: key)
-    let ledRawOutcome = try? await HeartbeatSession(key: key, transport: ledRawTag).flashLight(color: 2, count: 10, via: .rawFrame)
+    let ledRawOutcome = try? await HeartbeatSession(key: key, transport: ledRawTag, via: .rawFrame).flashLight(color: 2, count: 10)
     check(ledRawOutcome == .sent && ledRawTag.ledPlainSeen == ESLFrame.ledPlain(color: 2, count: 10),
           "LED raw session: .sent and tag decrypts the expected plaintext")
 
-    let ledAPDUTag = MockTag(key: key)
-    let ledAPDUOutcome = try? await HeartbeatSession(key: key, transport: ledAPDUTag).flashLight(color: 2, count: 10, via: .apdu)
-    check(ledAPDUOutcome == .transferFailed && ledAPDUTag.apduFrames.count == 1,
-          "LED APDU experiment: firmware answering 6A 81 maps to .transferFailed")
+    // APDU path: the whole session (handshake included) is APDU-wrapped, because on an ISO 7816 tag
+    // CoreNFC cannot send raw frames at all.
+    let rejectingTag = MockTag(key: key)
+    do {
+        _ = try await HeartbeatSession(key: key, transport: rejectingTag, via: .apdu).flashLight(color: 2, count: 10)
+        check(false, "APDU session against firmware that rejects APDUs fails at the first frame")
+    } catch {
+        check(rejectingTag.apduFrames.count == 1 && rejectingTag.heartbeatFrames == 0 && rejectingTag.ledPlainSeen == nil,
+              "APDU session against firmware that rejects APDUs fails at the first frame")
+    }
 
-    let ledAPDUAcceptingTag = MockTag(key: key)
-    ledAPDUAcceptingTag.acceptAPDU = true
-    let acceptedOutcome = try? await HeartbeatSession(key: key, transport: ledAPDUAcceptingTag).flashLight(color: 2, count: 10, via: .apdu)
-    check(acceptedOutcome == .sent, "LED APDU experiment: firmware answering 90 00 maps to .sent")
+    let acceptingTag = MockTag(key: key)
+    acceptingTag.acceptAPDU = true
+    let acceptedOutcome = try? await HeartbeatSession(key: key, transport: acceptingTag, via: .apdu).flashLight(color: 2, count: 10)
+    check(acceptedOutcome == .sent && acceptingTag.apduFrames.count == 4
+            && acceptingTag.ledPlainSeen == ESLFrame.ledPlain(color: 2, count: 10)
+            && acceptingTag.bindingValid && acceptingTag.challengeAnsweredCorrectly,
+          "APDU session: handshake and LED all APDU-wrapped, firmware accepting -> .sent")
+    let rawSendEslId: [UInt8] = ESLFrame.sendEslId()
+    let expectedFirstAPDU: [UInt8] = Array(rawSendEslId[0..<4]) + [UInt8(3)] + Array(rawSendEslId[4...])
+    var firstAPDUBytes: [UInt8] = []
+    if let first = acceptingTag.apduFrames.first {
+        firstAPDUBytes = [first.cla, first.ins, first.p1, first.p2, UInt8(first.data.count)] + first.data
+    }
+    check(firstAPDUBytes == expectedFirstAPDU, "APDU session: first APDU is sendEslId wrapped as 00 C0 00 01 03 05 CRC")
+
+    let apduHeartbeatTag = MockTag(key: key)
+    apduHeartbeatTag.acceptAPDU = true
+    let apduHeartbeat = try? await HeartbeatSession(key: key, transport: apduHeartbeatTag, via: .apdu).sendHeartbeat()
+    check(apduHeartbeat == .sent && apduHeartbeatTag.heartbeatFrames == 1, "APDU session: heartbeat -> .sent")
+
+    let apduChannelTag = MockTag(key: key)
+    apduChannelTag.acceptAPDU = true
+    let apduChannel = try? await HeartbeatSession(key: key, transport: apduChannelTag, via: .apdu).readHeartbeatChannel()
+    check(apduChannel == 151, "APDU session: read channel -> 151 (status word stripped before parsing)")
+
+    let apduKeyErrTag = MockTag(key: key)
+    apduKeyErrTag.acceptAPDU = true
+    apduKeyErrTag.challenge = [0x6A, 0x82]
+    do {
+        _ = try await HeartbeatSession(key: key, transport: apduKeyErrTag, via: .apdu).sendHeartbeat()
+        check(false, "APDU session: 6A 82 challenge throws keyError")
+    } catch {
+        check((error as? HeartbeatError) == .keyError, "APDU session: 6A 82 challenge throws keyError")
+    }
 
     let shutTag = MockTag(key: key)
-    let shutOutcome = try? await HeartbeatSession(key: key, transport: shutTag).shutLight(via: .rawFrame)
+    let shutOutcome = try? await HeartbeatSession(key: key, transport: shutTag).shutLight()
     check(shutOutcome == .sent && shutTag.ndefWritten, "shut-off via LightActy path: handshake, then .sent")
 
     let shutRawTag = MockTag(key: key)

@@ -84,7 +84,14 @@ class SimulatedEslFirmware:
         self.frames.append(payload)
         if len(payload) == payload[3] + 7:  # APDU framing: one byte longer than the raw frame
             self.apdu_payloads.append(payload)
-            return SW_SUCCESS if self.accept_apdu else bytes([0x6A, 0x81])
+            if not self.accept_apdu:
+                return bytes([0x6A, 0x81])
+            # Assumed behaviour: drop Lc, answer like the raw frame, end the reply with a status word.
+            reply = self._raw(payload[:4] + payload[5:])
+            return reply if len(reply) == 2 or reply[-2:] == SW_SUCCESS else reply + SW_SUCCESS
+        return self._raw(payload)
+
+    def _raw(self, payload: bytes) -> bytes:
         cmd = payload[4]
         if cmd == core.CMD_SEND_ESL_ID:
             return bytes([0x00, 0xC0, 0x00, 20, 0x00]) + self._content() + SW_SUCCESS

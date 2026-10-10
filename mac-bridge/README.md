@@ -24,7 +24,7 @@ python3 -m pip install -r requirements.txt   # or: pip install cryptography
 python3 -m unittest discover -s . -p 'test_*.py' -v
 ```
 
-33 tests: protocol vectors, session logic, and the simulated end-to-end path.
+35 tests: protocol vectors, session logic (raw and APDU), and the simulated end-to-end path.
 
 ## Hardware test (needs an ACR122U-class reader and one spare tag)
 
@@ -33,7 +33,7 @@ export ESL_KEY_B64='...'   # the key from your backend; default is 16 x 0xFF
 python3 esl_monitor.py once --mode channel           # raw frame, same as Android's read-channel
 python3 esl_monitor.py once --mode heartbeat         # raw frame, handshake + heartbeat
 python3 esl_monitor.py once --mode led --color red --count 10          # raw LED frame
-python3 esl_monitor.py once --mode led-apdu --color red --count 10     # ISO 7816 APDU experiment
+python3 esl_monitor.py once --mode led --via apdu --color red --count 10   # ISO 7816 APDU experiment (what iOS sends)
 python3 esl_monitor.py monitor --mode channel --csv channels.csv       # long monitoring
 ```
 
@@ -41,7 +41,8 @@ Use one tag at a time. Several tags in the field collide.
 
 ### How to read the APDU experiment
 
-`led-apdu` sends the bound LED frame wrapped as `00 C0 00 LEN Lc <cmd payload crc>`.
+`--via apdu` sends every frame of the session (handshake included) wrapped as
+`00 C0 00 LEN Lc <cmd payload crc>`, which is exactly what the iOS app sends on an ISO 7816 tag.
 The tag firmware decides what it accepts.
 
 - `90 00` and the LED lights: the APDU route works, and iOS CoreNFC can do the same.

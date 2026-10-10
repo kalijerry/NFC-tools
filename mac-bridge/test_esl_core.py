@@ -67,7 +67,13 @@ class FakeTag:
         self.frames.append(frame)
         if len(frame) == frame[3] + 7:
             self.apdu_frames.append(frame)
-            return SW_SUCCESS if self.accept_apdu else bytes([0x6A, 0x81])
+            if not self.accept_apdu:
+                return bytes([0x6A, 0x81])
+            reply = self._raw(frame[:4] + frame[5:])
+            return reply if len(reply) == 2 or reply[-2:] == SW_SUCCESS else reply + SW_SUCCESS
+        return self._raw(frame)
+
+    def _raw(self, frame: bytes) -> bytes:
         cmd = frame[4]
         if cmd == core.CMD_SEND_ESL_ID:
             return bytes([0x00, 0xC0, 0x00, 20, 0x00]) + ESL_CONTENT + SW_SUCCESS
@@ -178,16 +184,31 @@ class Sessions(unittest.TestCase):
         self.assertEqual(tag.led_plain_seen, core.led_plain(2, 10))
         self.assertTrue(tag.binding_ok)
 
-    def test_led_apdu_experiment_rejected_by_fake_firmware(self):
+    def test_apdu_session_rejected_by_fake_firmware_fails_at_first_frame(self):
         tag = FakeTag(accept_apdu=False)
-        response = core.session_led_apdu(tag, KEY, "red", 10)
-        self.assertEqual(response, bytes([0x6A, 0x81]))
+        with self.assertRaises(core.ProtocolError):
+            core.session_led(tag, KEY, "red", 10, via=core.VIA_APDU)
         self.assertEqual(len(tag.apdu_frames), 1)
-        self.assertEqual(tag.apdu_frames[0].hex(), "00c0001214" + ORACLE["light_red_10_bound"][8:])
+        self.assertEqual(tag.apdu_frames[0], core.as_apdu(core.send_esl_id()))
+        self.assertIsNone(tag.led_plain_seen)
 
-    def test_led_apdu_experiment_accepted_by_fake_firmware(self):
+    def test_apdu_session_accepted_by_fake_firmware(self):
         tag = FakeTag(accept_apdu=True)
-        self.assertEqual(core.session_led_apdu(tag, KEY, "red", 10), SW_SUCCESS)
+        self.assertEqual(core.session_led(tag, KEY, "red", 10, via=core.VIA_APDU), "sent")
+        self.assertEqual(len(tag.apdu_frames), 4)  # sendEslId, getRandom, sendRandom, LED
+        self.assertEqual(tag.apdu_frames[3].hex(), "00c0001214" + ORACLE["light_red_10_bound"][8:])
+        self.assertEqual(tag.led_plain_seen, core.led_plain(2, 10))
+        self.assertTrue(tag.binding_ok and tag.challenge_answered_ok)
+
+    def test_apdu_heartbeat_and_channel(self):
+        self.assertEqual(core.session_heartbeat(FakeTag(accept_apdu=True), KEY, via=core.VIA_APDU), "sent")
+        self.assertEqual(core.session_read_channel(FakeTag(accept_apdu=True), KEY, via=core.VIA_APDU), 151)
+
+    def test_apdu_key_rejected(self):
+        tag = FakeTag(accept_apdu=True)
+        tag.challenge = SW_KEY_ERROR
+        with self.assertRaises(KeyRejected):
+            core.session_heartbeat(tag, KEY, via=core.VIA_APDU)
 
     def test_shut_light_paths(self):
         tag = FakeTag()

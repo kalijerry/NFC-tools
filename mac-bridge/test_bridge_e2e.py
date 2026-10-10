@@ -62,18 +62,22 @@ class SessionsOverReader(unittest.TestCase):
         self.assertEqual(firmware.led_plain_seen, core.led_plain(2, 10))
         self.assertTrue(firmware.binding_ok)
 
-    def test_led_apdu_experiment_when_firmware_rejects_apdu(self):
+    def test_apdu_session_when_firmware_rejects_apdu(self):
         firmware = SimulatedEslFirmware(KEY, accept_apdu=False)
         tag, _ = make_tag(firmware)
-        response = core.session_led_apdu(tag, KEY, "red", 10)
-        self.assertEqual(response, bytes([0x6A, 0x81]))
+        with self.assertRaises(core.ProtocolError):
+            core.session_led(tag, KEY, "red", 10, via=core.VIA_APDU)
         self.assertEqual(len(firmware.apdu_payloads), 1)
-        self.assertEqual(firmware.apdu_payloads[0][:5].hex(), "00c0001214")
+        self.assertEqual(firmware.apdu_payloads[0], core.as_apdu(core.send_esl_id()))
 
-    def test_led_apdu_experiment_when_firmware_accepts_apdu(self):
+    def test_apdu_session_when_firmware_accepts_apdu(self):
         firmware = SimulatedEslFirmware(KEY, accept_apdu=True)
         tag, _ = make_tag(firmware)
-        self.assertEqual(core.session_led_apdu(tag, KEY, "red", 10), SW_SUCCESS)
+        self.assertEqual(core.session_led(tag, KEY, "red", 10, via=core.VIA_APDU), "sent")
+        self.assertEqual(len(firmware.apdu_payloads), 4)
+        self.assertEqual(firmware.led_plain_seen, core.led_plain(2, 10))
+        self.assertEqual(core.session_read_channel(make_tag(SimulatedEslFirmware(KEY, accept_apdu=True))[0], KEY,
+                                                   via=core.VIA_APDU), 151)
 
     def test_key_rejected_by_challenge(self):
         firmware = SimulatedEslFirmware(KEY, challenge=SW_KEY_ERROR)

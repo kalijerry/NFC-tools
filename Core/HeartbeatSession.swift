@@ -1,6 +1,10 @@
-/// One raw ISO-DEP conversation with an ESL tag, plus the NDEF write the Android app
-/// performs at the start of every session.
+/// One conversation with an ESL tag, plus the NDEF write the Android app performs at the start
+/// of every session.
 protocol ESLTagTransport {
+    /// What the NFC stack detected (tag type, AID, UID, NDEF write result). Shown in the log so a
+    /// device test tells us how iOS sees the ESL tag.
+    var tagSummary: String { get }
+
     /// Writes the NDEF text record "汉朔科技E31" (BaseNfcManagerActy.createTextRecord).
     func writeVendorNDEF() async throws
 
@@ -8,16 +12,19 @@ protocol ESLTagTransport {
     func transceive(_ frame: [UInt8]) async throws -> [UInt8]
 
     /// Sends an ISO 7816-4 APDU and returns response data plus SW1 SW2.
-    /// On iOS this is the only path CoreNFC can use for arbitrary bytes (NFCISO7816APDU).
+    /// On iOS this is the only path CoreNFC offers for an ISO 7816 tag (NFCISO7816APDU).
     func transceiveAPDU(_ apdu: ESLFrame.APDU) async throws -> [UInt8]
 }
 
-/// How a bound LED frame goes onto the air.
-enum LightTransport {
-    /// Android's own framing. CoreNFC cannot send this (see ESLTransportError).
+/// How every ESL frame of a session goes onto the air.
+enum FrameTransport: String, CaseIterable, Identifiable {
+    /// Android's own framing (IsoDep.transceive). CoreNFC cannot send it to an ISO 7816 tag.
     case rawFrame
-    /// Experiment: the same bytes wrapped as an ISO 7816-4 APDU.
+    /// Experiment: each frame wrapped as an ISO 7816-4 APDU (see ESLFrame.asAPDU). Whether the tag
+    /// firmware accepts this is unknown until a device test.
     case apdu
+
+    var id: String { rawValue }
 }
 
 /// Opens a tag session around `body`, closing it when `body` returns or throws.
@@ -25,7 +32,7 @@ protocol ESLTagSessionRunner {
     func withTag<T>(_ body: (ESLTagTransport) async throws -> T) async throws -> T
 }
 
-/// Outcome of a heartbeat, named after the Android strings shown to the user.
+/// Outcome of a frame that answers with a status word, named after the Android strings.
 enum HeartbeatOutcome: Equatable {
     case sent            // 90 00 -> "发送成功!"  (send_success)
     case noSuchPage      // 6A 83 -> "无此页!"    (no_such_page)
@@ -37,55 +44,48 @@ enum HeartbeatError: Error, Equatable {
     case keyError
 }
 
-/// The quick-heartbeat sequences from BaseNfcManagerActy.sendEslIdNfcMessage and readHBCH:
+/// The Android session (BaseNfcManagerActy.sendEslIdNfcMessage / readHBCH):
 ///   1. write NDEF "汉朔科技E31"
 ///   2. sendEslId  -> ESL ID
 ///   3. getRandom  -> 16-byte challenge (6A 82 = key error)
 ///   4. sendRandom -> AES(key, challenge)
-///   5. send the heartbeat (or read-channel) frame, re-CRC'd with the ESL ID
+///   5. the action frame (heartbeat, read channel, LED), re-CRC'd with the ESL ID
+/// `via` decides whether every one of these frames goes raw or APDU-wrapped.
 struct HeartbeatSession {
     let key: [UInt8]
     let transport: ESLTagTransport
+    var via: FrameTransport = .rawFrame
 
     func sendHeartbeat() async throws -> HeartbeatOutcome {
         let frame = try ESLFrame.heartbeat(key: key)
         let eslid = try await authenticate()
-        let response = try await transport.transceive(ESLFrame.bind(frame, eslid: eslid))
-        return Self.classify(response)
+        return Self.classify(try await exchange(ESLFrame.bind(frame, eslid: eslid)))
     }
 
     func readHeartbeatChannel() async throws -> UInt8 {
         let frame = try ESLFrame.readHeartbeatChannel(key: key)
         let eslid = try await authenticate()
-        let response = try await transport.transceive(ESLFrame.bind(frame, eslid: eslid))
+        let response = try await exchange(ESLFrame.bind(frame, eslid: eslid))
         return try ESLFrame.channel(fromResponse: response, key: key)
     }
 
     /// LightActy: handshake, then the bound LED frame (colour, count).
-    func flashLight(color: UInt8, count: UInt16, via: LightTransport) async throws -> HeartbeatOutcome {
+    func flashLight(color: UInt8, count: UInt16) async throws -> HeartbeatOutcome {
         let frame = try ESLFrame.led(key: key, color: color, count: count)
-        return try await sendBound(frame, via: via)
+        let eslid = try await authenticate()
+        return Self.classify(try await exchange(ESLFrame.bind(frame, eslid: eslid)))
     }
 
     /// LightActy's "off" option: handshake, then the shut-off frame.
-    func shutLight(via: LightTransport) async throws -> HeartbeatOutcome {
-        try await sendBound(try ESLFrame.shutLight(key: key), via: via)
+    func shutLight() async throws -> HeartbeatOutcome {
+        let frame = try ESLFrame.shutLight(key: key)
+        let eslid = try await authenticate()
+        return Self.classify(try await exchange(ESLFrame.bind(frame, eslid: eslid)))
     }
 
     /// ShutLightActy's path: the shut-off frame goes out directly, with no NDEF write and no handshake.
     func shutLightWithoutHandshake() async throws -> [UInt8] {
-        try await transport.transceive(try ESLFrame.shutLight(key: key))
-    }
-
-    private func sendBound(_ frame: [UInt8], via: LightTransport) async throws -> HeartbeatOutcome {
-        let eslid = try await authenticate()
-        let bound = ESLFrame.bind(frame, eslid: eslid)
-        switch via {
-        case .rawFrame:
-            return Self.classify(try await transport.transceive(bound))
-        case .apdu:
-            return Self.classify(try await transport.transceiveAPDU(ESLFrame.asAPDU(bound)))
-        }
+        try await exchange(try ESLFrame.shutLight(key: key))
     }
 
     static func classify(_ response: [UInt8]) -> HeartbeatOutcome {
@@ -94,13 +94,30 @@ struct HeartbeatSession {
         return .transferFailed
     }
 
+    /// Sends one frame the selected way. On the APDU path CoreNFC appends SW1 SW2 to the response
+    /// data. A trailing 90 00 after data is dropped so the parsers see the same bytes as on the raw
+    /// path; a bare status word (for example 90 00 or 6A 82) is passed through unchanged.
+    /// This normalisation is an assumption about how the firmware would answer APDUs.
+    private func exchange(_ frame: [UInt8]) async throws -> [UInt8] {
+        switch via {
+        case .rawFrame:
+            return try await transport.transceive(frame)
+        case .apdu:
+            let response = try await transport.transceiveAPDU(ESLFrame.asAPDU(frame))
+            if response.count > 2, Array(response.suffix(2)) == [0x90, 0x00] {
+                return Array(response.dropLast(2))
+            }
+            return response
+        }
+    }
+
     private func authenticate() async throws -> [UInt8] {
         try await transport.writeVendorNDEF()
-        let eslid = try ESLFrame.eslid(fromResponse: try await transport.transceive(ESLFrame.sendEslId()))
-        let challenge = try await transport.transceive(try ESLFrame.getRandom(key: key))
+        let eslid = try ESLFrame.eslid(fromResponse: try await exchange(ESLFrame.sendEslId()))
+        let challenge = try await exchange(try ESLFrame.getRandom(key: key))
         if challenge == [0x6A, 0x82] { throw HeartbeatError.keyError }
         let encrypted = try AESECB.encrypt(key: key, challenge)
-        _ = try await transport.transceive(ESLFrame.sendRandom(encryptedChallenge: encrypted))
+        _ = try await exchange(ESLFrame.sendRandom(encryptedChallenge: encrypted))
         return eslid
     }
 }

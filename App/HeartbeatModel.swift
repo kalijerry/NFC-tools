@@ -18,6 +18,8 @@ final class HeartbeatModel: ObservableObject {
     @Published var keyBase64: String
     @Published private(set) var log: [String] = []
     @Published private(set) var isBusy = false
+    /// APDU by default: on an ISO 7816 tag CoreNFC cannot send raw frames at all.
+    @Published var frameTransport: FrameTransport = .apdu
     @Published var ledColor: ESLFrame.LEDColor = .red
     @Published var ledCount: UInt16 = 10
 
@@ -45,6 +47,7 @@ final class HeartbeatModel: ObservableObject {
             FramePreview(name: "读取心跳信道 (readHBCH)", hex: hex { try ESLFrame.readHeartbeatChannel(key: key) }),
             FramePreview(name: "sendEslId", hex: Self.hexString(ESLFrame.sendEslId())),
             FramePreview(name: "getRandom", hex: hex { try ESLFrame.getRandom(key: key) }),
+            FramePreview(name: "闪灯 (light)", hex: hex { try ESLFrame.led(key: key, color: ledColor.rawValue, count: ledCount) }),
         ]
     }
 
@@ -55,11 +58,7 @@ final class HeartbeatModel: ObservableObject {
 
     func sendHeartbeat() async {
         await perform(title: "发送心跳") { session in
-            switch try await session.sendHeartbeat() {
-            case .sent: return "发送成功!"
-            case .noSuchPage: return "无此页!"
-            case .transferFailed: return "传输失败!"
-            }
+            Self.describe(try await session.sendHeartbeat())
         }
     }
 
@@ -71,19 +70,17 @@ final class HeartbeatModel: ObservableObject {
         }
     }
 
-    func flashLight(via: LightTransport) async {
+    func flashLight() async {
         let color = ledColor.rawValue
         let count = ledCount
-        let label = via == .apdu ? "闪灯 (APDU 实验)" : "闪灯 (原始帧)"
-        await perform(title: label) { session in
-            Self.describe(try await session.flashLight(color: color, count: count, via: via))
+        await perform(title: "闪灯") { session in
+            Self.describe(try await session.flashLight(color: color, count: count))
         }
     }
 
-    func shutLight(via: LightTransport) async {
-        let label = via == .apdu ? "关灯 (APDU 实验)" : "关灯 (原始帧)"
-        await perform(title: label) { session in
-            Self.describe(try await session.shutLight(via: via))
+    func shutLight() async {
+        await perform(title: "关灯") { session in
+            Self.describe(try await session.shutLight())
         }
     }
 
@@ -100,18 +97,31 @@ final class HeartbeatModel: ObservableObject {
             append("\(title)：密钥格式错误（需要 Base64 编码的 16/24/32 字节）")
             return
         }
+        let via = frameTransport
+        let label = "\(title) [\(via == .apdu ? "APDU" : "原始帧")]"
         isBusy = true
         defer { isBusy = false }
+        // Read after the action, so the summary includes the NDEF write result. Kept on failure too:
+        // a device test needs to know what iOS detected.
+        var summary: String?
         do {
-            let text = try await runner.withTag { transport in
-                try await action(HeartbeatSession(key: key, transport: transport))
+            let text = try await runner.withTag { transport -> String in
+                defer { summary = transport.tagSummary }
+                return try await action(HeartbeatSession(key: key, transport: transport, via: via))
             }
-            append("\(title)：\(text)")
-        } catch HeartbeatError.keyError {
-            append("\(title)：密钥错误，无法获取信息")
+            if let summary { append("\(label)：检测到 \(summary)") }
+            append("\(label)：\(text)")
         } catch {
-            append("\(title)：\(error.localizedDescription)")
+            if let summary { append("\(label)：检测到 \(summary)") }
+            append("\(label)：\(Self.errorText(error))")
         }
+    }
+
+    private static func errorText(_ error: Error) -> String {
+        if let heartbeatError = error as? HeartbeatError, heartbeatError == .keyError {
+            return "密钥错误，无法获取信息"
+        }
+        return error.localizedDescription
     }
 
     private func append(_ line: String) {
