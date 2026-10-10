@@ -17,17 +17,9 @@ jobs:
       fail-fast: false
       matrix:
         variant:
-          # NDEF application AID: a Type 4 tag answers SELECT, so iOS reports it as ISO 7816 (APDU path).
-          - name: ndef-aid
-            aid: D2760000850101
-          # Proprietary placeholder AID that should not match: an ISO 14443-A tag may then be
-          # reported as MIFARE, where the raw-frame path (sendMiFareCommand) can be tried.
-          - name: no-aid
-            aid: F0000000000001
-          # No select-identifiers key at all. The first device test showed the ESL tag answers
-          # SELECT for any AID, so every listed AID makes CoreNFC report it as ISO 7816 (no raw
-          # path). Without the key an ISO 14443-A tag may surface as MIFARE, where raw frames
-          # can be sent with sendMiFareCommand.
+          # Both device tests classified the ESL tag as ISO 7816 whatever the AID list (it answers
+          # SELECT for any AID, and with no key at all CoreNFC still reports ISO 7816), so one
+          # build is enough. No select-identifiers key: nothing is assumed about the tag.
           - name: no-iso7816-key
             aid: ""
     steps:

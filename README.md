@@ -59,6 +59,10 @@ ESL 帧不是 APDU 格式：第 5 个字节是命令码（0x0A/0x0C 等），而
 - 待验证的假设：固件只匹配原始帧 `00 C0 00 LEN CMD`，APDU 多出的 Lc 字节使其不匹配，于是泛泛回 `90 00`。若 `no-iso7816-key` 版本把价签识别为 MIFARE，原始帧就能用 `sendMiFareCommand` 发出，这是 iOS 上唯一等价于 Android `IsoDep.transceive` 的途径。
 - 新增「APDU 附带 Le=00」开关，排除「固件想返回数据但没被请求」的可能。
 
+## 第二次真机测试（2026-10-10，`no-iso7816-key` 版本，闪灯 [原始帧]）
+
+不声明任何 AID 时，CoreNFC 仍把价签报告为 ISO 7816 标签，原始帧发送因此失败（`frameNotRepresentableAsAPDU`）。CoreNFC 对 ISO 7816 标签只提供 `sendCommand(apdu:)`，没有发原始 ISO-DEP 帧的接口，所以 **在 iPhone 上用公开 API 复现 Android 的 `IsoDep.transceive` 已确认不可行**。剩下的变数只有一个：价签固件对 APDU 包装的帧回了什么（见日志里的 `←` 行）。
+
 ## 验证情况
 
 已验证（macOS，`swiftc`，Swift 6.2）：
@@ -75,15 +79,15 @@ ESL 帧不是 APDU 格式：第 5 个字节是命令码（0x0A/0x0C 等），而
 
 ## 签名安装到自己的 iPhone（Ad Hoc，不走 TestFlight）
 
-工作流 `.github/workflows/build-adhoc.yml` 只能手动触发。它用你的证书和 Ad Hoc 描述文件签名，同时产出两个版本：
+工作流 `.github/workflows/build-adhoc.yml` 只能手动触发。它用你的证书和 Ad Hoc 描述文件签名。现在只产出一个版本 `no-iso7816-key`（不声明 AID）：两次真机测试都表明，无论 AID 列表怎么设，CoreNFC 都把这块价签归为 ISO 7816 标签，所以多个版本没有意义。曾经的对比版本如下：
 
 | 版本 | Info.plist 里的 AID | 预期 iOS 把价签识别为 | 能测的发送方式 |
 |---|---|---|---|
 | `ndef-aid` | `D2760000850101`（NDEF 应用） | ISO 7816 标签 | 只有 APDU |
 | `no-aid` | `F0000000000001`（占位值） | 实测：仍是 ISO 7816，价签对任意 AID 的 SELECT 都回成功 | 只有 APDU |
-| `no-iso7816-key` | 不声明 | 可能是 MIFARE（family unknown） | 原始帧（`sendMiFareCommand`）和 APDU |
+| `no-iso7816-key` | 不声明 | 实测：仍是 ISO 7816 | 只有 APDU（现在唯一保留的版本） |
 
-两个版本 Bundle ID 相同，装第二个会覆盖第一个。识别结果以 App 日志里的「检测到 …」为准。
+识别结果以 App 日志里的「检测到 …」为准。
 
 一次性准备（在开发者网页上完成）：
 
